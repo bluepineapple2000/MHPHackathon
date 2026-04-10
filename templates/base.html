@@ -17,7 +17,7 @@
                     <span class="brand-kicker">Hackathon MVP</span>
                     <h1>GridPilot</h1>
                 </a>
-                <p class="brand-copy">Plan electric fleets, assign fixed routes, and shift charging into cheaper windows.</p>
+                <p class="brand-copy">Plan electric fleets, forecast depot solar output from weather, and charge at the lowest effective energy cost.</p>
             </div>
             <nav class="site-nav">
                 <a href="{{ url_for('home') }}" class="nav-link {% if request.endpoint == 'home' %}active{% endif %}">Dashboard</a>
@@ -25,7 +25,7 @@
                 <a href="{{ url_for('chargers') }}" class="nav-link {% if request.endpoint == 'chargers' %}active{% endif %}">Chargers</a>
                 <a href="{{ url_for('vehicles') }}" class="nav-link {% if request.endpoint == 'vehicles' %}active{% endif %}">Vehicles</a>
                 <a href="{{ url_for('routes') }}" class="nav-link {% if request.endpoint == 'routes' %}active{% endif %}">Routes</a>
-                <a href="{{ url_for('prices') }}" class="nav-link {% if request.endpoint == 'prices' %}active{% endif %}">Prices</a>
+                <a href="{{ url_for('energy') }}" class="nav-link {% if request.endpoint in ['energy', 'prices_redirect'] %}active{% endif %}">Energy</a>
                 <a href="{{ url_for('plan_detail', plan_id=latest_plan_id) if latest_plan_id else url_for('home') }}" class="nav-link {% if request.endpoint in ['plan_detail', 'plan_latest'] %}active{% endif %}">Latest Plan</a>
             </nav>
         </header>
@@ -46,7 +46,7 @@
         <footer class="site-footer">
             <div>
                 <p>GridPilot prototype for weekly EV fleet planning.</p>
-                <p class="muted-line">Single-process Flask app with SQLite and in-app planning.</p>
+                <p class="muted-line">Solar-aware charging with weather and market-driven energy forecasting.</p>
             </div>
             <a href="{{ url_for('impressum') }}" class="footer-link">Impressum</a>
         </footer>
