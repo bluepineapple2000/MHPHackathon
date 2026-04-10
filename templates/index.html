@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modern Flask App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <!-- Header Section -->
+    <header class="header">
+        <div class="header-container">
+            <div class="logo">
+                <h1>✨ MyApp</h1>
+            </div>
+            <nav class="nav">
+                <a href="/" class="nav-link active">Home</a>
+                <a href="#features" class="nav-link">Features</a>
+                <a href="#functionality" class="nav-link">Get Started</a>
+                <a href="/impressum" class="nav-link">Impressum</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Hero Section -->
+        <section class="hero">
+            <div class="hero-content">
+                <h2>Welcome to Your Modern App</h2>
+                <p class="subtitle">Built with Flask, designed for simplicity and elegance</p>
+                <button class="cta-button">Get Started</button>
+            </div>
+        </section>
+
+        <!-- Features Section -->
+        <section id="features" class="features">
+            <h3>Features</h3>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🚀</div>
+                    <h4>Fast & Modern</h4>
+                    <p>Built with the latest web technologies</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎨</div>
+                    <h4>Beautiful Design</h4>
+                    <p>Clean and responsive interface</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚙️</div>
+                    <h4>Easy to Customize</h4>
+                    <p>Extend functionality as needed</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Functionality Section -->
+        <section id="functionality" class="functionality">
+            <h3>Add Your Features Here</h3>
+            <div class="functionality-container">
+                <!-- ============================================ -->
+                <!-- FUNCTIONALITY PLACEHOLDER #1                -->
+                <!-- Replace this section with your first feature -->
+                <!-- ============================================ -->
+                <div class="feature-box">
+                    <h4>Feature #1</h4>
+                    <p>Your first feature description goes here</p>
+                    <button class="secondary-button">Explore</button>
+                </div>
+
+                <!-- ============================================ -->
+                <!-- FUNCTIONALITY PLACEHOLDER #2                -->
+                <!-- Replace this section with your second feature -->
+                <!-- ============================================ -->
+                <div class="feature-box">
+                    <h4>Feature #2</h4>
+                    <p>Your second feature description goes here</p>
+                    <button class="secondary-button">Explore</button>
+                </div>
+
+                <!-- ============================================ -->
+                <!-- FUNCTIONALITY PLACEHOLDER #3                -->
+                <!-- Replace this section with your third feature -->
+                <!-- ============================================ -->
+                <div class="feature-box">
+                    <h4>Feature #3</h4>
+                    <p>Your third feature description goes here</p>
+                    <button class="secondary-button">Explore</button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2026 MyApp. All rights reserved.</p>
+            <a href="/impressum" class="footer-link">Impressum</a>
+        </div>
+    </footer>
+</body>
+</html>
