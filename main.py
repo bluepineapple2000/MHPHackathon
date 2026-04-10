@@ -19,7 +19,7 @@ from forecast import (
     build_energy_forecast,
 )
 from geocoding import GeocodingError, geocode_address
-from planner import Charger, EnergyWindow, Route, Vehicle, run_weekly_plan
+from planner import Charger, EnergyWindow, Route, Vehicle, iter_blocks, run_weekly_plan
 from routing import RoutingError, route_through_waypoints
 
 
@@ -577,6 +577,74 @@ def load_latest_energy_forecast() -> tuple[list[sqlite3.Row], sqlite3.Row | None
     return rows, latest
 
 
+def build_forecast_chart_points(rows: list[sqlite3.Row]) -> list[dict]:
+    buckets: dict[str, dict] = {}
+    for row in rows:
+        start_at = row["start_at"]
+        bucket = buckets.setdefault(
+            start_at,
+            {
+                "timestamp": start_at,
+                "solar_kwh": 0.0,
+                "buy_price_sum": 0.0,
+                "price_count": 0,
+            },
+        )
+        bucket["solar_kwh"] += float(row["solar_kwh_available"] or 0.0)
+        bucket["buy_price_sum"] += float(row["buy_price_per_kwh"] or 0.0)
+        bucket["price_count"] += 1
+
+    points = []
+    for timestamp in sorted(buckets):
+        bucket = buckets[timestamp]
+        avg_buy_price = bucket["buy_price_sum"] / max(bucket["price_count"], 1)
+        points.append(
+            {
+                "timestamp": timestamp,
+                "solar_kwh": round(bucket["solar_kwh"], 2),
+                "buy_price": round(avg_buy_price, 3),
+            }
+        )
+    return points
+
+
+def build_charge_split_chart_points(rows: list[sqlite3.Row]) -> list[dict]:
+    buckets: dict[str, dict] = {}
+    for row in rows:
+        start_at = parse_datetime_local(row["start_at"])
+        end_at = parse_datetime_local(row["end_at"])
+        total_duration_hours = max((end_at - start_at).total_seconds() / 3600, 0.0)
+        if total_duration_hours <= 0:
+            continue
+        solar_rate = float(row["solar_kwh"] or 0.0) / total_duration_hours
+        grid_rate = float(row["grid_kwh"] or 0.0) / total_duration_hours
+        for block_anchor, _overlap_start, _overlap_end, duration_hours in iter_blocks(start_at, end_at):
+            hourly_anchor = block_anchor.replace(minute=0)
+            timestamp = hourly_anchor.isoformat(timespec="minutes")
+            bucket = buckets.setdefault(
+                timestamp,
+                {
+                    "timestamp": timestamp,
+                    "solar_kwh": 0.0,
+                    "grid_kwh": 0.0,
+                },
+            )
+            bucket["solar_kwh"] += solar_rate * duration_hours
+            bucket["grid_kwh"] += grid_rate * duration_hours
+
+    points = []
+    for timestamp in sorted(buckets):
+        bucket = buckets[timestamp]
+        points.append(
+            {
+                "timestamp": timestamp,
+                "solar_kwh": round(bucket["solar_kwh"], 2),
+                "grid_kwh": round(bucket["grid_kwh"], 2),
+            }
+        )
+    return points
+
+
 def parse_service_addresses(value: str) -> list[str]:
     return [line.strip() for line in value.splitlines() if line.strip()]
 
@@ -1077,6 +1145,7 @@ def energy():
         "energy.html",
         depots=depots_rows,
         forecast_rows=forecast_rows,
+        forecast_chart_points=build_forecast_chart_points(forecast_rows),
         latest_forecast=latest_forecast,
         summary=summary,
     )
@@ -1382,6 +1451,7 @@ def plan_detail(plan_id: int):
         coverage=coverage_ratio(plan_run),
         total_solar_kwh=total_solar_kwh,
         total_grid_kwh=total_grid_kwh,
+        charge_split_chart_points=build_charge_split_chart_points(charge_plans),
         depots_map_data=depot_map_payload(depots_rows),
         chargers_map_data=[
             {

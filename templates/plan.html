@@ -111,6 +111,28 @@
     {% endif %}
 </section>
 
+{% if charge_plans %}
+    <section class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Charging visual</p>
+                <h3>Charged energy split over time</h3>
+            </div>
+        </div>
+        <div class="chart-shell">
+            <div class="chart-copy">
+                <strong>Solar-charged vs. bought energy</strong>
+                <p>Each half-hour block shows how much of the scheduled charging load is covered by forecasted solar versus grid energy purchases.</p>
+            </div>
+            <div
+                class="chart-canvas"
+                data-chart-type="charge-split"
+                data-series='{{ charge_split_chart_points|tojson }}'
+            ></div>
+        </div>
+    </section>
+{% endif %}
+
 <section class="two-column">
     <article class="panel">
         <div class="section-heading">

@@ -42,30 +42,6 @@
                     </div>
                 </div>
             </div>
-            <div class="table-shell">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Depot</th>
-                            <th>Start</th>
-                            <th>Solar available</th>
-                            <th>Buy price</th>
-                            <th>Source</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in forecast_rows %}
-                            <tr>
-                                <td>{{ row.depot_name }}</td>
-                                <td>{{ row.start_at|datetime_display }}</td>
-                                <td>{{ row.solar_kwh_available|round(2) }} kWh</td>
-                                <td>{{ row.buy_price_per_kwh|money }}</td>
-                                <td>{{ row.price_source }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
         {% else %}
             <div class="empty-state">
                 <p>No forecast has been generated yet.</p>
@@ -76,4 +52,50 @@
         {% endif %}
     </article>
 </section>
+
+{% if latest_forecast %}
+    <section class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Forecast visual</p>
+                <h2>Projected solar availability vs. buy price</h2>
+            </div>
+        </div>
+        <div class="chart-shell">
+            <div class="chart-copy">
+                <strong>7-day forecast across all depots</strong>
+                <p>Total forecasted solar is aggregated across depots per half-hour block, with buy price shown as the average projected buy price across depots.</p>
+            </div>
+            <div
+                class="chart-canvas"
+                data-chart-type="forecast-overview"
+                data-series='{{ forecast_chart_points|tojson }}'
+            ></div>
+        </div>
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Depot</th>
+                        <th>Start</th>
+                        <th>Solar available</th>
+                        <th>Buy price</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in forecast_rows %}
+                        <tr>
+                            <td>{{ row.depot_name }}</td>
+                            <td>{{ row.start_at|datetime_display }}</td>
+                            <td>{{ row.solar_kwh_available|round(2) }} kWh</td>
+                            <td>{{ row.buy_price_per_kwh|money }}</td>
+                            <td>{{ row.price_source }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% endif %}
 {% endblock %}

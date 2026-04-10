@@ -301,6 +301,70 @@ textarea {
     margin-top: 0.8rem;
 }
 
+.chart-shell {
+    margin: 1.2rem 0 1.5rem;
+    padding: 1rem 1rem 0.85rem;
+    border: 1px solid rgba(7, 45, 81, 0.1);
+    background: rgba(255, 255, 255, 0.42);
+    border-radius: var(--radius-md);
+}
+
+.chart-shell.compact {
+    margin-top: 0;
+}
+
+.chart-copy {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: baseline;
+    margin-bottom: 0.9rem;
+}
+
+.chart-copy strong {
+    color: var(--primary-dark);
+}
+
+.chart-copy p {
+    margin: 0;
+    max-width: 48rem;
+    color: var(--muted);
+    font-size: 0.94rem;
+}
+
+.chart-canvas {
+    width: 100%;
+}
+
+.chart-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+    overflow: visible;
+}
+
+.chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.8rem;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.chart-legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.chart-legend i {
+    width: 0.9rem;
+    height: 0.9rem;
+    display: inline-block;
+    border-radius: 999px;
+}
+
 .hero-note {
     margin: 0.9rem 0 0;
     color: var(--primary);
@@ -678,6 +742,11 @@ tbody tr:hover {
 
     .timeline-meta {
         text-align: left;
+    }
+
+    .chart-copy {
+        flex-direction: column;
+        align-items: flex-start;
     }
 
     th,
