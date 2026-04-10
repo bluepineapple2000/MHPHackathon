@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS routes (
     service_label TEXT NOT NULL DEFAULT '',
     service_latitude REAL NOT NULL DEFAULT 48.7758,
     service_longitude REAL NOT NULL DEFAULT 9.1829,
+    service_points_json TEXT NOT NULL DEFAULT '[]',
+    service_stop_count INTEGER NOT NULL DEFAULT 1,
     route_duration_minutes REAL NOT NULL DEFAULT 0,
     route_geometry_json TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
@@ -212,6 +214,8 @@ def init_db() -> None:
         ensure_column(connection, "routes", "service_latitude", "service_latitude REAL NOT NULL DEFAULT 48.7758")
         ensure_column(connection, "routes", "service_longitude", "service_longitude REAL NOT NULL DEFAULT 9.1829")
         ensure_column(connection, "routes", "service_address", "service_address TEXT NOT NULL DEFAULT ''")
+        ensure_column(connection, "routes", "service_points_json", "service_points_json TEXT NOT NULL DEFAULT '[]'")
+        ensure_column(connection, "routes", "service_stop_count", "service_stop_count INTEGER NOT NULL DEFAULT 1")
         ensure_column(connection, "routes", "route_duration_minutes", "route_duration_minutes REAL NOT NULL DEFAULT 0")
         ensure_column(connection, "routes", "route_geometry_json", "route_geometry_json TEXT NOT NULL DEFAULT ''")
         ensure_column(connection, "charge_plans", "solar_kwh", "solar_kwh REAL NOT NULL DEFAULT 0")
@@ -309,13 +313,41 @@ def persist_energy_forecast(windows: list[EnergyWindow]) -> None:
     db.commit()
 
 
-def insert_demo_dataset() -> tuple[bool, str]:
-    existing_demo = query_one(
-        "SELECT id FROM depots WHERE name = ?",
-        ("Demo Muenster East Depot",),
+def reset_demo_dataset() -> None:
+    db = get_db()
+    for table_name in (
+        "unserved_routes",
+        "route_assignments",
+        "charge_plans",
+        "plan_runs",
+        "energy_forecasts",
+        "routes",
+        "vehicles",
+        "chargers",
+        "depots",
+    ):
+        db.execute(f"DELETE FROM {table_name}")
+    db.execute(
+        """
+        DELETE FROM sqlite_sequence
+        WHERE name IN (
+            'depots',
+            'chargers',
+            'vehicles',
+            'routes',
+            'energy_forecasts',
+            'plan_runs',
+            'route_assignments',
+            'charge_plans',
+            'unserved_routes'
+        )
+        """
     )
-    if existing_demo is not None:
-        return False, "Demo dataset already exists."
+    db.commit()
+
+
+def insert_demo_dataset() -> tuple[bool, str]:
+    reset_demo_dataset()
 
     created_at = utc_now_iso()
     depots = {}
@@ -414,14 +446,14 @@ def insert_demo_dataset() -> tuple[bool, str]:
         service_day = tomorrow + timedelta(days=day_offset)
         for name, dep_hour, dep_minute, start_depot_name, end_depot_name, service_address in route_templates:
             departure_at = service_day.replace(hour=dep_hour, minute=dep_minute)
-            geocoded_service = geocode_address(service_address)
-            route_data = route_through_waypoints(
-                [
-                    (depots[start_depot_name]["latitude"], depots[start_depot_name]["longitude"]),
-                    (geocoded_service["latitude"], geocoded_service["longitude"]),
-                    (depots[end_depot_name]["latitude"], depots[end_depot_name]["longitude"]),
-                ]
-            )
+            service_addresses = parse_service_addresses(service_address)
+            start_depot = {"latitude": depots[start_depot_name]["latitude"], "longitude": depots[start_depot_name]["longitude"]}
+            end_depot = {"latitude": depots[end_depot_name]["latitude"], "longitude": depots[end_depot_name]["longitude"]}
+            service_points = [geocode_address(address) for address in service_addresses]
+            waypoints = [(start_depot["latitude"], start_depot["longitude"])]
+            waypoints.extend((point["latitude"], point["longitude"]) for point in service_points)
+            waypoints.append((end_depot["latitude"], end_depot["longitude"]))
+            route_data = route_through_waypoints(waypoints)
             arrival_at = departure_at + timedelta(minutes=route_data["duration_minutes"])
             distance_km = route_data["distance_km"]
             required_speed_kph = distance_km / max(route_data["duration_minutes"] / 60, 1e-6)
@@ -430,9 +462,10 @@ def insert_demo_dataset() -> tuple[bool, str]:
                 INSERT INTO routes (
                     name, departure_at, arrival_at, distance_km, required_speed_kph,
                     start_depot_id, end_depot_id, service_address, service_label,
-                    service_latitude, service_longitude, route_duration_minutes,
-                    route_geometry_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    service_latitude, service_longitude, service_points_json,
+                    service_stop_count, route_duration_minutes, route_geometry_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     f"{name} D{day_offset + 1}",
@@ -442,17 +475,19 @@ def insert_demo_dataset() -> tuple[bool, str]:
                     required_speed_kph,
                     depots[start_depot_name]["id"],
                     depots[end_depot_name]["id"],
-                    service_address,
-                    geocoded_service["label"],
-                    geocoded_service["latitude"],
-                    geocoded_service["longitude"],
+                    "\n".join(service_addresses),
+                    service_summary_label(service_points),
+                    service_points[0]["latitude"],
+                    service_points[0]["longitude"],
+                    json.dumps(service_points),
+                    len(service_points),
                     route_data["duration_minutes"],
                     json.dumps(route_data["geometry_geojson"]),
                     created_at,
                 ),
             )
 
-    return True, "Demo dataset added."
+    return True, "Demo dataset reset to baseline."
 
 
 def load_latest_energy_forecast() -> tuple[list[sqlite3.Row], sqlite3.Row | None]:
@@ -471,6 +506,34 @@ def load_latest_energy_forecast() -> tuple[list[sqlite3.Row], sqlite3.Row | None
         (latest["generated_at"],),
     )
     return rows, latest
+
+
+def parse_service_addresses(value: str) -> list[str]:
+    return [line.strip() for line in value.splitlines() if line.strip()]
+
+
+def service_summary_label(service_points: list[dict]) -> str:
+    if not service_points:
+        return "Service route"
+    short_labels = [point["label"].split(",")[0].strip() for point in service_points]
+    if len(short_labels) == 1:
+        return short_labels[0]
+    if len(short_labels) == 2:
+        return f"2 stops: {short_labels[0]} + {short_labels[1]}"
+    return f"{len(short_labels)} stops: " + ", ".join(short_labels[:3])
+
+
+def build_route_data_for_addresses(
+    start_depot: sqlite3.Row,
+    end_depot: sqlite3.Row,
+    service_addresses: list[str],
+) -> tuple[list[dict], dict]:
+    service_points = [geocode_address(address) for address in service_addresses]
+    waypoints = [(start_depot["latitude"], start_depot["longitude"])]
+    waypoints.extend((point["latitude"], point["longitude"]) for point in service_points)
+    waypoints.append((end_depot["latitude"], end_depot["longitude"]))
+    route_data = route_through_waypoints(waypoints)
+    return service_points, route_data
 
 
 def depot_map_payload(rows: list[sqlite3.Row]) -> list[dict]:
@@ -506,8 +569,10 @@ def route_map_payload(
                 "departure_at": row["departure_at"],
                 "arrival_at": row["arrival_at"],
                 "distance_km": row["distance_km"],
+                "service_stop_count": row["service_stop_count"] if "service_stop_count" in row.keys() else 1,
                 "route_duration_minutes": row["route_duration_minutes"] if "route_duration_minutes" in row.keys() else None,
                 "geometry": json.loads(row["route_geometry_json"]) if row["route_geometry_json"] else None,
+                "service_points": json.loads(row["service_points_json"]) if row["service_points_json"] else [],
                 "start_depot": {
                     "id": row["start_depot_id"],
                     "name": row["start_depot_name"],
@@ -595,12 +660,13 @@ def api_geocode():
 
 @app.get("/api/route-preview")
 def api_route_preview():
-    service_address = request.args.get("service_address", "").strip()
+    service_addresses_raw = request.args.get("service_addresses", "").strip()
     departure_at_raw = request.args.get("departure_at", "").strip()
     start_depot_id = request.args.get("start_depot_id", "").strip()
     end_depot_id = request.args.get("end_depot_id", "").strip()
-    if not service_address or not start_depot_id or not end_depot_id:
-        return {"error": "start depot, end depot, and service address are required"}, 400
+    service_addresses = parse_service_addresses(service_addresses_raw)
+    if not service_addresses or not start_depot_id or not end_depot_id:
+        return {"error": "start depot, end depot, and at least one service address are required"}, 400
 
     start_depot = query_one("SELECT * FROM depots WHERE id = ?", (start_depot_id,))
     end_depot = query_one("SELECT * FROM depots WHERE id = ?", (end_depot_id,))
@@ -608,21 +674,16 @@ def api_route_preview():
         return {"error": "selected depot was not found"}, 400
 
     try:
-        geocoded_service = geocode_address(service_address)
-        route_data = route_through_waypoints(
-            [
-                (start_depot["latitude"], start_depot["longitude"]),
-                (geocoded_service["latitude"], geocoded_service["longitude"]),
-                (end_depot["latitude"], end_depot["longitude"]),
-            ]
-        )
+        service_points, route_data = build_route_data_for_addresses(start_depot, end_depot, service_addresses)
     except (GeocodingError, RoutingError) as exc:
         return {"error": str(exc)}, 400
 
     response = {
-        "service_label": geocoded_service["label"],
-        "service_latitude": geocoded_service["latitude"],
-        "service_longitude": geocoded_service["longitude"],
+        "service_label": service_summary_label(service_points),
+        "service_latitude": service_points[0]["latitude"],
+        "service_longitude": service_points[0]["longitude"],
+        "service_points": service_points,
+        "service_stop_count": len(service_points),
         "distance_km": round(route_data["distance_km"], 1),
         "duration_minutes": round(route_data["duration_minutes"], 1),
         "geometry": route_data["geometry_geojson"],
@@ -827,26 +888,24 @@ def routes():
         name = request.form["name"].strip()
         start_depot_id = int(request.form["start_depot_id"])
         end_depot_id = int(request.form["end_depot_id"])
-        service_address = request.form["service_address"].strip()
+        service_addresses_raw = request.form["service_addresses"].strip()
+        service_addresses = parse_service_addresses(service_addresses_raw)
 
         if not name:
             flash("Route name is required.", "error")
-        elif not service_address:
-            flash("Add a service address for the route map.", "error")
+        elif not service_addresses:
+            flash("Add at least one service address for the route map.", "error")
         else:
             start_depot = query_one("SELECT * FROM depots WHERE id = ?", (start_depot_id,))
             end_depot = query_one("SELECT * FROM depots WHERE id = ?", (end_depot_id,))
             try:
-                geocoded_service = geocode_address(service_address)
-                route_data = route_through_waypoints(
-                    [
-                        (start_depot["latitude"], start_depot["longitude"]),
-                        (geocoded_service["latitude"], geocoded_service["longitude"]),
-                        (end_depot["latitude"], end_depot["longitude"]),
-                    ]
+                service_points, route_data = build_route_data_for_addresses(
+                    start_depot,
+                    end_depot,
+                    service_addresses,
                 )
             except GeocodingError as exc:
-                flash(f"Could not locate service address on the map: {exc}.", "error")
+                flash(f"Could not locate one of the service addresses on the map: {exc}.", "error")
                 return redirect(url_for("routes"))
             except RoutingError as exc:
                 flash(f"Could not calculate a drivable street route: {exc}.", "error")
@@ -861,9 +920,10 @@ def routes():
                 INSERT INTO routes (
                     name, departure_at, arrival_at, distance_km, required_speed_kph,
                     start_depot_id, end_depot_id, service_address, service_label,
-                    service_latitude, service_longitude, route_duration_minutes,
-                    route_geometry_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    service_latitude, service_longitude, service_points_json,
+                    service_stop_count, route_duration_minutes, route_geometry_json,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     name,
@@ -873,10 +933,12 @@ def routes():
                     required_speed_kph,
                     start_depot_id,
                     end_depot_id,
-                    service_address,
-                    geocoded_service["label"],
-                    geocoded_service["latitude"],
-                    geocoded_service["longitude"],
+                    service_addresses_raw,
+                    service_summary_label(service_points),
+                    service_points[0]["latitude"],
+                    service_points[0]["longitude"],
+                    json.dumps(service_points),
+                    len(service_points),
                     route_data["duration_minutes"],
                     json.dumps(route_data["geometry_geojson"]),
                     utc_now_iso(),
@@ -1127,6 +1189,8 @@ def fetch_plan(plan_id: int) -> tuple[sqlite3.Row | None, list[sqlite3.Row], lis
             routes.distance_km,
             routes.route_duration_minutes,
             routes.route_geometry_json,
+            routes.service_points_json,
+            routes.service_stop_count,
             routes.service_label,
             routes.service_latitude,
             routes.service_longitude,
@@ -1174,6 +1238,8 @@ def fetch_plan(plan_id: int) -> tuple[sqlite3.Row | None, list[sqlite3.Row], lis
             routes.distance_km,
             routes.route_duration_minutes,
             routes.route_geometry_json,
+            routes.service_points_json,
+            routes.service_stop_count,
             routes.service_label,
             routes.service_latitude,
             routes.service_longitude,

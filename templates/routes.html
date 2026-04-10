@@ -37,10 +37,10 @@
                 </select>
             </label>
             <label>
-                Service address
-                <input type="text" name="service_address" id="service_address" placeholder="Kriegsbergstrasse 60, 70174 Stuttgart, Germany" required>
+                Service addresses
+                <textarea name="service_addresses" id="service_addresses" rows="5" placeholder="One address per line" required></textarea>
             </label>
-            <p class="form-hint">Use a real address. The app geocodes it automatically and previews the route on the map.</p>
+            <p class="form-hint">Use one real address per line. The app geocodes every stop, follows streets in order, and previews the full service route on the map.</p>
             <div class="route-preview-metrics">
                 <div class="metric-chip">
                     <span>Distance</span>
@@ -55,6 +55,7 @@
                     <strong id="preview-arrival">n/a</strong>
                 </div>
             </div>
+            <button type="button" id="prefill-demo-route" class="secondary-button">Prefill Live Demo Route</button>
             <button type="submit" class="primary-button">Save route</button>
         </form>
     </article>
@@ -79,7 +80,8 @@
                     <thead>
                         <tr>
                             <th>Route</th>
-                            <th>Service point</th>
+                            <th>Stops</th>
+                            <th>Service summary</th>
                             <th>Departure</th>
                             <th>Arrival</th>
                             <th>Distance</th>
@@ -92,6 +94,7 @@
                         {% for route in routes %}
                             <tr class="map-linked-row" data-route-id="{{ route.id }}">
                                 <td>{{ route.name }}</td>
+                                <td>{{ route.service_stop_count }}</td>
                                 <td>{{ route.service_label }}</td>
                                 <td>{{ route.departure_at|datetime_display }}</td>
                                 <td>{{ route.arrival_at|datetime_display }}</td>

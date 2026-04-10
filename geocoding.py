@@ -14,6 +14,12 @@ class GeocodingError(RuntimeError):
     pass
 
 
+def _format_http_error(exc: HTTPError) -> str:
+    if exc.code == 429:
+        return "geocoding service rate-limited this app (HTTP 429 Too Many Requests)"
+    return f"geocoding service failed with HTTP {exc.code} {exc.reason}"
+
+
 def geocode_address(query: str) -> dict:
     query = query.strip()
     if not query:
@@ -31,8 +37,14 @@ def geocode_address(query: str) -> dict:
     try:
         with urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise GeocodingError("could not geocode the provided address") from exc
+    except HTTPError as exc:
+        raise GeocodingError(_format_http_error(exc)) from exc
+    except URLError as exc:
+        raise GeocodingError(f"geocoding service is unreachable: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise GeocodingError("geocoding service timed out") from exc
+    except json.JSONDecodeError as exc:
+        raise GeocodingError("geocoding service returned invalid JSON") from exc
 
     if not payload:
         raise GeocodingError("no map location found for that address")

@@ -14,6 +14,12 @@ class RoutingError(RuntimeError):
     pass
 
 
+def _format_http_error(exc: HTTPError) -> str:
+    if exc.code == 429:
+        return "routing service rate-limited this app (HTTP 429 Too Many Requests)"
+    return f"routing service failed with HTTP {exc.code} {exc.reason}"
+
+
 def route_through_waypoints(points: list[tuple[float, float]]) -> dict:
     if len(points) < 2:
         raise RoutingError("at least two route points are required")
@@ -40,8 +46,14 @@ def route_through_waypoints(points: list[tuple[float, float]]) -> dict:
     try:
         with urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise RoutingError("could not calculate a street route") from exc
+    except HTTPError as exc:
+        raise RoutingError(_format_http_error(exc)) from exc
+    except URLError as exc:
+        raise RoutingError(f"routing service is unreachable: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RoutingError("routing service timed out") from exc
+    except json.JSONDecodeError as exc:
+        raise RoutingError("routing service returned invalid JSON") from exc
 
     routes = payload.get("routes") or []
     if not routes:

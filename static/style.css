@@ -45,7 +45,8 @@ a {
 
 button,
 input,
-select {
+select,
+textarea {
     font: inherit;
 }
 
@@ -407,7 +408,8 @@ select {
 }
 
 input,
-select {
+select,
+textarea {
     width: 100%;
     padding: 0.9rem 1rem;
     border-radius: 4px;
@@ -420,6 +422,11 @@ input:focus,
 select:focus {
     outline: 2px solid rgba(7, 45, 81, 0.35);
     border-color: rgba(7, 45, 81, 0.45);
+}
+
+textarea {
+    resize: vertical;
+    min-height: 7rem;
 }
 
 .table-shell {

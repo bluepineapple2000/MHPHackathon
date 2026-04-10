@@ -49,7 +49,8 @@
             path,
             options,
         ).bindPopup(
-            `<strong>${route.name}</strong><br>${route.service_point.label}<br>${route.distance_km} km`
+            `<strong>${route.name}</strong><br>${route.service_stop_count || (route.service_points ? route.service_points.length : 1)} stops`
+            + `<br>${route.service_point.label}<br>${route.distance_km} km`
             + (route.route_duration_minutes ? `<br>${Math.round(route.route_duration_minutes)} min` : "")
             + (route.assigned_vehicle ? `<br>Vehicle: ${route.assigned_vehicle}` : "")
         );
@@ -143,10 +144,11 @@
         const startDepotSelect = document.querySelector('select[name="start_depot_id"]');
         const endDepotSelect = document.querySelector('select[name="end_depot_id"]');
         const departureInput = document.querySelector('input[name="departure_at"]');
-        const serviceAddressInput = document.querySelector('input[name="service_address"]');
+        const serviceAddressesInput = document.querySelector('textarea[name="service_addresses"]');
         const distanceField = document.getElementById("preview-distance");
         const durationField = document.getElementById("preview-duration");
         const arrivalField = document.getElementById("preview-arrival");
+        const prefillDemoRouteButton = document.getElementById("prefill-demo-route");
         let previewLayer = null;
         let geocodeTimer = null;
 
@@ -169,14 +171,14 @@
         }
 
         async function updatePreviewFromAddress() {
-            const address = serviceAddressInput.value.trim();
+            const addresses = serviceAddressesInput.value.trim();
             const departureAt = departureInput.value;
-            if (!address || !startDepotSelect.value || !endDepotSelect.value) {
+            if (!addresses || !startDepotSelect.value || !endDepotSelect.value) {
                 return;
             }
             try {
                 const params = new URLSearchParams({
-                    service_address: address,
+                    service_addresses: addresses,
                     start_depot_id: startDepotSelect.value,
                     end_depot_id: endDepotSelect.value,
                 });
@@ -196,6 +198,8 @@
                     distance_km: payload.distance_km,
                     route_duration_minutes: payload.duration_minutes,
                     geometry: payload.geometry,
+                    service_stop_count: payload.service_stop_count,
+                    service_points: payload.service_points,
                     start_depot: depotsById[startDepotSelect.value],
                     end_depot: depotsById[endDepotSelect.value],
                     service_point: {
@@ -216,11 +220,46 @@
             });
         });
 
-        serviceAddressInput.addEventListener("input", () => {
+        serviceAddressesInput.addEventListener("input", () => {
             window.clearTimeout(geocodeTimer);
             geocodeTimer = window.setTimeout(updatePreviewFromAddress, 450);
         });
-        serviceAddressInput.addEventListener("blur", updatePreviewFromAddress);
+        serviceAddressesInput.addEventListener("blur", updatePreviewFromAddress);
+
+        if (prefillDemoRouteButton) {
+            prefillDemoRouteButton.addEventListener("click", () => {
+                const now = new Date();
+                now.setDate(now.getDate() + 1);
+                now.setHours(14, 5, 0, 0);
+                const localValue = new Date(now.getTime() - now.getTimezoneOffset() * 60000)
+                    .toISOString()
+                    .slice(0, 16);
+
+                const routeNameInput = document.querySelector('input[name="name"]');
+                if (routeNameInput) {
+                    routeNameInput.value = "Live Demo Multi-Stop Route";
+                }
+                departureInput.value = localValue;
+
+                const depotOptions = Array.from(startDepotSelect.options);
+                const eastOption = depotOptions.find((option) => option.text.includes("East Depot"));
+                const northOption = depotOptions.find((option) => option.text.includes("North Depot"));
+                if (eastOption) {
+                    startDepotSelect.value = eastOption.value;
+                    endDepotSelect.value = eastOption.value;
+                } else if (northOption) {
+                    startDepotSelect.value = northOption.value;
+                    endDepotSelect.value = northOption.value;
+                }
+
+                serviceAddressesInput.value = [
+                    "Domplatz 20, 48143 Münster, Germany",
+                    "Aegidiimarkt 7, 48143 Münster, Germany",
+                    "Hafenweg 26B, 48155 Münster, Germany",
+                ].join("\n");
+                updatePreviewFromAddress();
+            });
+        }
 
         fitMapToLayers(map, layers);
         attachRouteHoverInteractions(routeLayers);
