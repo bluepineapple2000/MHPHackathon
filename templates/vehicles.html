@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Vehicles{% endblock %}
+
+{% block content %}
+<section class="page-grid">
+    <article class="panel form-panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Fleet setup</p>
+                <h2>Add electric vehicle</h2>
+            </div>
+        </div>
+        <form method="post" class="stack-form">
+            <label>
+                Vehicle name
+                <input type="text" name="name" placeholder="Bus 14" required>
+            </label>
+            <label>
+                Vehicle type
+                <input type="text" name="vehicle_type" placeholder="Electric bus" required>
+            </label>
+            <label>
+                Home depot
+                <select name="depot_id" required>
+                    {% for depot in depots %}
+                        <option value="{{ depot.id }}">{{ depot.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Battery capacity (kWh)
+                <input type="number" name="battery_kwh" min="1" step="0.1" placeholder="420" required>
+            </label>
+            <label>
+                Current SOC (%)
+                <input type="number" name="current_soc_pct" min="1" max="100" step="0.1" placeholder="65" required>
+            </label>
+            <label>
+                Minimum reserve (%)
+                <input type="number" name="min_reserve_pct" min="1" max="99" step="0.1" placeholder="20" required>
+            </label>
+            <label>
+                Efficiency (kWh/km)
+                <input type="number" name="efficiency_kwh_per_km" min="0.1" step="0.01" placeholder="1.2" required>
+            </label>
+            <label>
+                Max speed (km/h)
+                <input type="number" name="max_speed_kph" min="1" step="0.1" placeholder="90" required>
+            </label>
+            <label>
+                Max charge power (kW)
+                <input type="number" name="max_charge_power_kw" min="1" step="0.1" placeholder="120" required>
+            </label>
+            <button type="submit" class="primary-button">Save vehicle</button>
+        </form>
+    </article>
+
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Current data</p>
+                <h2>Fleet</h2>
+            </div>
+        </div>
+        {% if vehicles %}
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Depot</th>
+                            <th>Battery</th>
+                            <th>SOC</th>
+                            <th>Reserve</th>
+                            <th>Efficiency</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for vehicle in vehicles %}
+                            <tr>
+                                <td>{{ vehicle.name }}</td>
+                                <td>{{ vehicle.vehicle_type }}</td>
+                                <td>{{ vehicle.depot_name }}</td>
+                                <td>{{ vehicle.battery_kwh }} kWh</td>
+                                <td>{{ vehicle.current_soc_pct }}%</td>
+                                <td>{{ vehicle.min_reserve_pct }}%</td>
+                                <td>{{ vehicle.efficiency_kwh_per_km }} kWh/km</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No vehicles yet.</p>
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

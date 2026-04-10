@@ -1,90 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Impressum</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-</head>
-<body>
-    <!-- Header Section -->
-    <header class="header">
-        <div class="header-container">
-            <div class="logo">
-                <h1>✨ MyApp</h1>
-            </div>
-            <nav class="nav">
-                <a href="/" class="nav-link">Home</a>
-                <a href="/" class="nav-link">Features</a>
-                <a href="/" class="nav-link">Get Started</a>
-                <a href="/impressum" class="nav-link active">Impressum</a>
-            </nav>
+{% extends "base.html" %}
+
+{% block title %}Impressum{% endblock %}
+
+{% block content %}
+<section class="panel legal-panel">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">Legal placeholder</p>
+            <h2>Impressum</h2>
         </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="main-content">
-        <section class="impressum-section">
-            <h2>Impressum (Legal Notice)</h2>
-            
-            <div class="impressum-content">
-                <h3>Information in accordance with section 5 TMG (Telemediengesetz)</h3>
-                
-                <h4>Publisher (Verantwortlich für den Inhalt):</h4>
-                <p>
-                    Your Name<br>
-                    Your Street Address<br>
-                    Your City, ZIP Code<br>
-                    Your Country
-                </p>
-
-                <h4>Contact Information:</h4>
-                <p>
-                    Email: <a href="mailto:your-email@example.com">your-email@example.com</a><br>
-                    Phone: +1 (555) 000-0000<br>
-                    Website: <a href="https://yourwebsite.com">yourwebsite.com</a>
-                </p>
-
-                <h4>Tax Identification Number:</h4>
-                <p>VAT ID: XX XXX XXX XXX</p>
-
-                <h4>Responsible for Editorial:</h4>
-                <p>Your Name (Address as stated above)</p>
-
-                <h4>Disclaimer:</h4>
-                <p>
-                    The content of our pages has been compiled with meticulous care and to the best of our knowledge. 
-                    However, we cannot assume any liability for the up-to-dateness, completeness, or accuracy of all contents on this website. 
-                    As service providers, we are liable for our own content on these pages in accordance with general laws (Section 7(1) of the TMG). 
-                    However, according to Sections 8 through 10 of the TMG, we, as service providers, are not obligated to monitor transmitted or stored information or to investigate circumstances that suggest illegal activity.
-                </p>
-
-                <h4>Liability for Links:</h4>
-                <p>
-                    Our website contains links to external websites. 
-                    As far as the content of third parties is concerned, we are not responsible for it, as we are not obliged to monitor these external contents. 
-                    For unlawful contents, the respective provider of the page in which the link is located is responsible, not the one on whose website the link is found.
-                </p>
-
-                <h4>Copyright Notice:</h4>
-                <p>
-                    The content and works created by the site operators on these pages are subject to German copyright law. 
-                    The duplication, processing, distribution, or any form of utilization beyond the limits of copyright law requires the written consent of the author or originator.
-                </p>
-            </div>
-
-            <div class="back-button-container">
-                <a href="/" class="back-button">← Back to Home</a>
-            </div>
-        </section>
-    </main>
-
-    <!-- Footer -->
-    <footer class="footer">
-        <div class="footer-content">
-            <p>&copy; 2026 MyApp. All rights reserved.</p>
-            <a href="/impressum" class="footer-link">Impressum</a>
-        </div>
-    </footer>
-</body>
-</html>
+    </div>
+    <div class="legal-copy">
+        <p>This page is a prototype placeholder for hackathon use. Replace the details below before any public launch.</p>
+        <h3>Publisher</h3>
+        <p>Your Organization<br>Your Street<br>Your City, ZIP<br>Your Country</p>
+        <h3>Contact</h3>
+        <p>Email: your-email@example.com<br>Phone: +49 000 000000</p>
+        <h3>Responsible For Content</h3>
+        <p>Your Name</p>
+        <h3>Disclaimer</h3>
+        <p>Prototype software and demonstration content may be incomplete. Validate all output before using it in production operations.</p>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly Plan{% endblock %}
+
+{% block content %}
+<section class="hero-panel compact">
+    <div class="hero-copy">
+        <p class="eyebrow">Plan run</p>
+        <h2>Weekly fleet assignment</h2>
+        <p class="hero-text">Created {{ plan_run.created_at|datetime_display }} for the horizon from {{ plan_run.horizon_start|datetime_display }} to {{ plan_run.horizon_end|datetime_display }}.</p>
+    </div>
+    <div class="hero-aside">
+        <div class="plan-snapshot">
+            <span class="card-label">Coverage</span>
+            <strong>{{ coverage|round(0) }}%</strong>
+            <p>{{ plan_run.served_routes_count }} served / {{ plan_run.unserved_routes_count }} unserved</p>
+            <p>{{ plan_run.total_cost|money }} estimated charging cost</p>
+        </div>
+    </div>
+</section>
+
+<section class="stats-grid">
+    <article class="stat-card">
+        <span class="card-label">Assignments</span>
+        <strong>{{ assignments|length }}</strong>
+        <p>Route to vehicle matches inside the 7-day horizon.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Charge sessions</span>
+        <strong>{{ charge_plans|length }}</strong>
+        <p>Charging windows inserted before departures where needed.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Unserved</span>
+        <strong>{{ unserved|length }}</strong>
+        <p>Trips that could not be covered with the available fleet and charging setup.</p>
+    </article>
+</section>
+
+<section class="panel">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">Results</p>
+            <h3>Assigned routes</h3>
+        </div>
+    </div>
+    {% if assignments %}
+        <div class="table-shell">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Route</th>
+                        <th>Vehicle</th>
+                        <th>Departure</th>
+                        <th>Start SOC</th>
+                        <th>End SOC</th>
+                        <th>Route energy</th>
+                        <th>Charge cost</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assignment in assignments %}
+                        <tr>
+                            <td>{{ assignment.route_name }}</td>
+                            <td>{{ assignment.vehicle_name }}</td>
+                            <td>{{ assignment.departure_at|datetime_display }}</td>
+                            <td>{{ assignment.start_soc_pct|round(1) }}%</td>
+                            <td>{{ assignment.end_soc_pct|round(1) }}%</td>
+                            <td>{{ assignment.route_energy_kwh|round(1) }} kWh</td>
+                            <td>{{ assignment.charging_cost|money }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>No routes were assigned in this run.</p>
+        </div>
+    {% endif %}
+</section>
+
+<section class="two-column">
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Charging</p>
+                <h3>Scheduled charging sessions</h3>
+            </div>
+        </div>
+        {% if charge_plans %}
+            <div class="timeline-list">
+                {% for session in charge_plans %}
+                    <div class="timeline-row">
+                        <div>
+                            <strong>{{ session.vehicle_name }}</strong>
+                            <p>{{ session.charger_name }}</p>
+                        </div>
+                        <div class="timeline-meta">
+                            <span>{{ session.start_at|datetime_display }}</span>
+                            <span>{{ session.energy_kwh|round(1) }} kWh to {{ session.target_soc_pct|round(1) }}%</span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No charging was needed for this run.</p>
+            </div>
+        {% endif %}
+    </article>
+
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Exceptions</p>
+                <h3>Unserved routes</h3>
+            </div>
+        </div>
+        {% if unserved %}
+            <div class="timeline-list">
+                {% for item in unserved %}
+                    <div class="timeline-row warning">
+                        <div>
+                            <strong>{{ item.route_name }}</strong>
+                            <p>{{ item.reason }}</p>
+                        </div>
+                        <div class="timeline-meta">
+                            <span>{{ item.departure_at|datetime_display }}</span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>All routes in the horizon were served.</p>
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}
