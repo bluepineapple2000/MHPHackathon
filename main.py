@@ -30,6 +30,74 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = "hackathon-prototype"
 app.config["DATABASE"] = DATABASE_PATH
 
+DEMO_DEPOT_SPECS = (
+    (
+        "Demo Muenster East Depot",
+        "Albersloher Weg 80, 48155 Münster, Germany",
+        25.0,
+        0.19,
+    ),
+    (
+        "Demo Muenster North Depot",
+        "Steinfurter Straße 113, 48149 Münster, Germany",
+        18.0,
+        0.18,
+    ),
+)
+
+DEMO_ROUTE_TEMPLATES = (
+    (
+        "Early Station Connector",
+        5,
+        20,
+        "Demo Muenster East Depot",
+        "Demo Muenster North Depot",
+        "Berliner Platz 29, 48143 Münster, Germany",
+    ),
+    (
+        "North Clinic Shuttle",
+        9,
+        10,
+        "Demo Muenster North Depot",
+        "Demo Muenster North Depot",
+        "Albert-Schweitzer-Campus 1, 48149 Münster, Germany",
+    ),
+    (
+        "East Logistics Run",
+        12,
+        35,
+        "Demo Muenster East Depot",
+        "Demo Muenster East Depot",
+        "Wolbecker Straße 300, 48155 Münster, Germany",
+    ),
+    (
+        "South Stadium Shuttle",
+        16,
+        45,
+        "Demo Muenster North Depot",
+        "Demo Muenster East Depot",
+        "Hammer Straße 302, 48153 Münster, Germany",
+    ),
+    (
+        "Late Hiltrup Return",
+        21,
+        10,
+        "Demo Muenster East Depot",
+        "Demo Muenster East Depot",
+        "Marktallee 73, 48165 Münster, Germany",
+    ),
+)
+
+DEMO_PREFILL_ROUTE = (
+    "Demo Muenster East Depot",
+    "Demo Muenster East Depot",
+    (
+        "Domplatz 20, 48143 Münster, Germany",
+        "Aegidiimarkt 7, 48143 Münster, Germany",
+        "Hafenweg 26B, 48155 Münster, Germany",
+    ),
+)
+
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -346,25 +414,33 @@ def reset_demo_dataset() -> None:
     db.commit()
 
 
+def prime_demo_map_cache() -> None:
+    depot_points = {}
+    for depot_name, depot_location, _solar_capacity_kwp, _grid_fee_per_kwh in DEMO_DEPOT_SPECS:
+        depot_points[depot_name] = geocode_address(depot_location)
+
+    for _name, _dep_hour, _dep_minute, start_depot_name, end_depot_name, service_address in DEMO_ROUTE_TEMPLATES:
+        service_points = [geocode_address(address) for address in parse_service_addresses(service_address)]
+        waypoints = [(depot_points[start_depot_name]["latitude"], depot_points[start_depot_name]["longitude"])]
+        waypoints.extend((point["latitude"], point["longitude"]) for point in service_points)
+        waypoints.append((depot_points[end_depot_name]["latitude"], depot_points[end_depot_name]["longitude"]))
+        route_through_waypoints(waypoints)
+
+    prefill_start_depot, prefill_end_depot, prefill_addresses = DEMO_PREFILL_ROUTE
+    prefill_points = [geocode_address(address) for address in prefill_addresses]
+    prefill_waypoints = [(depot_points[prefill_start_depot]["latitude"], depot_points[prefill_start_depot]["longitude"])]
+    prefill_waypoints.extend((point["latitude"], point["longitude"]) for point in prefill_points)
+    prefill_waypoints.append((depot_points[prefill_end_depot]["latitude"], depot_points[prefill_end_depot]["longitude"]))
+    route_through_waypoints(prefill_waypoints)
+
+
 def insert_demo_dataset() -> tuple[bool, str]:
     reset_demo_dataset()
+    prime_demo_map_cache()
 
     created_at = utc_now_iso()
     depots = {}
-    for depot in (
-        (
-            "Demo Muenster East Depot",
-            "Albersloher Weg 80, 48155 Münster, Germany",
-            25.0,
-            0.19,
-        ),
-        (
-            "Demo Muenster North Depot",
-            "Steinfurter Straße 113, 48149 Münster, Germany",
-            18.0,
-            0.18,
-        ),
-    ):
+    for depot in DEMO_DEPOT_SPECS:
         geocoded_depot = geocode_address(depot[1])
         depot_id = execute(
             """
@@ -435,16 +511,9 @@ def insert_demo_dataset() -> tuple[bool, str]:
         )
 
     tomorrow = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-    route_templates = (
-        ("Early Station Connector", 5, 20, "Demo Muenster East Depot", "Demo Muenster North Depot", "Berliner Platz 29, 48143 Münster, Germany"),
-        ("North Clinic Shuttle", 9, 10, "Demo Muenster North Depot", "Demo Muenster North Depot", "Albert-Schweitzer-Campus 1, 48149 Münster, Germany"),
-        ("East Logistics Run", 12, 35, "Demo Muenster East Depot", "Demo Muenster East Depot", "Wolbecker Straße 300, 48155 Münster, Germany"),
-        ("South Stadium Shuttle", 16, 45, "Demo Muenster North Depot", "Demo Muenster East Depot", "Hammer Straße 302, 48153 Münster, Germany"),
-        ("Late Hiltrup Return", 21, 10, "Demo Muenster East Depot", "Demo Muenster East Depot", "Marktallee 73, 48165 Münster, Germany"),
-    )
     for day_offset in range(2):
         service_day = tomorrow + timedelta(days=day_offset)
-        for name, dep_hour, dep_minute, start_depot_name, end_depot_name, service_address in route_templates:
+        for name, dep_hour, dep_minute, start_depot_name, end_depot_name, service_address in DEMO_ROUTE_TEMPLATES:
             departure_at = service_day.replace(hour=dep_hour, minute=dep_minute)
             service_addresses = parse_service_addresses(service_address)
             start_depot = {"latitude": depots[start_depot_name]["latitude"], "longitude": depots[start_depot_name]["longitude"]}

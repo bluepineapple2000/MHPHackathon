@@ -242,9 +242,13 @@
                 departureInput.value = localValue;
 
                 const depotOptions = Array.from(startDepotSelect.options);
+                const southOption = depotOptions.find((option) => option.text.includes("South Depot"));
                 const eastOption = depotOptions.find((option) => option.text.includes("East Depot"));
                 const northOption = depotOptions.find((option) => option.text.includes("North Depot"));
-                if (eastOption) {
+                if (southOption) {
+                    startDepotSelect.value = southOption.value;
+                    endDepotSelect.value = southOption.value;
+                } else if (eastOption) {
                     startDepotSelect.value = eastOption.value;
                     endDepotSelect.value = eastOption.value;
                 } else if (northOption) {
@@ -253,7 +257,7 @@
                 }
 
                 serviceAddressesInput.value = [
-                    "Domplatz 20, 48143 Münster, Germany",
+                    "Hammer Straße 470, 48153 Münster, Germany",
                     "Aegidiimarkt 7, 48143 Münster, Germany",
                     "Hafenweg 26B, 48155 Münster, Germany",
                 ].join("\n");

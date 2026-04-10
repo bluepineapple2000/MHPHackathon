@@ -5,6 +5,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
+from map_cache import get_cached_route, store_route, wait_for_map_service_slot
+
 
 OSRM_ROUTE_URL = "https://router.project-osrm.org/route/v1/driving/"
 USER_AGENT = "GridPilotHackathon/1.0 (OpenAI Codex demo)"
@@ -23,6 +25,9 @@ def _format_http_error(exc: HTTPError) -> str:
 def route_through_waypoints(points: list[tuple[float, float]]) -> dict:
     if len(points) < 2:
         raise RoutingError("at least two route points are required")
+    cached = get_cached_route(points)
+    if cached is not None:
+        return cached
 
     coordinates = ";".join(f"{longitude},{latitude}" for latitude, longitude in points)
     url = (
@@ -44,6 +49,7 @@ def route_through_waypoints(points: list[tuple[float, float]]) -> dict:
     )
 
     try:
+        wait_for_map_service_slot()
         with urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
@@ -65,9 +71,11 @@ def route_through_waypoints(points: list[tuple[float, float]]) -> dict:
     if not coordinates:
         raise RoutingError("routing service returned no route geometry")
 
-    return {
+    result = {
         "distance_km": float(route["distance"]) / 1000,
         "duration_minutes": float(route["duration"]) / 60,
         "geometry_geojson": geometry,
         "leaflet_path": [[lat, lon] for lon, lat in coordinates],
     }
+    store_route(points, result)
+    return result

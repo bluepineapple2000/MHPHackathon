@@ -5,6 +5,8 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
+from map_cache import get_cached_geocode, store_geocode, wait_for_map_service_slot
+
 
 NOMINATIM_SEARCH_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "GridPilotHackathon/1.0 (OpenAI Codex demo)"
@@ -24,6 +26,9 @@ def geocode_address(query: str) -> dict:
     query = query.strip()
     if not query:
         raise GeocodingError("address is required")
+    cached = get_cached_geocode(query)
+    if cached is not None:
+        return cached
 
     url = f"{NOMINATIM_SEARCH_URL}?{urlencode({'q': query, 'format': 'jsonv2', 'limit': 1})}"
     request = Request(
@@ -35,6 +40,7 @@ def geocode_address(query: str) -> dict:
     )
 
     try:
+        wait_for_map_service_slot()
         with urlopen(request, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except HTTPError as exc:
@@ -50,8 +56,10 @@ def geocode_address(query: str) -> dict:
         raise GeocodingError("no map location found for that address")
 
     first = payload[0]
-    return {
+    result = {
         "label": first.get("display_name", query),
         "latitude": float(first["lat"]),
         "longitude": float(first["lon"]),
     }
+    store_geocode(query, result)
+    return result
