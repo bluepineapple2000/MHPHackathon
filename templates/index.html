@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}GridPilot Dashboard{% endblock %}
+
+{% block content %}
+<section class="hero-panel">
+    <div class="hero-copy">
+        <p class="eyebrow">Weekly planning prototype</p>
+        <h2>Balance route coverage, energy costs, and charging readiness across a fixed EV fleet.</h2>
+        <p class="hero-text">Enter your vehicles, depots, chargers, route schedule, and electricity forecast. GridPilot builds a 7-day plan that keeps reserve margins intact and avoids unnecessary full charging.</p>
+        <form action="{{ url_for('run_plan') }}" method="post" class="inline-form">
+            <input type="hidden" name="horizon_days" value="7">
+            <button type="submit" class="primary-button">Generate 7-Day Plan</button>
+        </form>
+    </div>
+    <div class="hero-aside">
+        <div class="plan-snapshot">
+            <span class="card-label">Latest run</span>
+            {% if latest_plan %}
+                <strong>{{ latest_plan_coverage|round(0) }}% coverage</strong>
+                <p>{{ latest_plan.served_routes_count }} served / {{ latest_plan.unserved_routes_count }} unserved</p>
+                <p>{{ latest_plan.total_cost|money }} charging cost</p>
+                <a href="{{ url_for('plan_detail', plan_id=latest_plan.id) }}" class="inline-link">Open plan</a>
+            {% else %}
+                <strong>No plan yet</strong>
+                <p>Fill the setup screens, then generate the first weekly assignment run.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="stats-grid">
+    <article class="stat-card">
+        <span class="card-label">Depots</span>
+        <strong>{{ stats.depots_count }}</strong>
+        <p>Physical operating bases for vehicle assignment and charging.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Chargers</span>
+        <strong>{{ stats.chargers_count }}</strong>
+        <p>Charging banks with capacity limits that constrain scheduling.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Vehicles</span>
+        <strong>{{ stats.vehicles_count }}</strong>
+        <p>Electric buses or service vehicles with SOC, range, and speed limits.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Routes</span>
+        <strong>{{ stats.routes_count }}</strong>
+        <p>Fixed trips for the coming week, ordered by departure time.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Price windows</span>
+        <strong>{{ stats.prices_count }}</strong>
+        <p>Time-of-day energy costs used to shift charging where possible.</p>
+    </article>
+</section>
+
+<section class="two-column">
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Setup flow</p>
+                <h3>Prototype workflow</h3>
+            </div>
+        </div>
+        <div class="workflow-grid">
+            <a href="{{ url_for('depots') }}" class="workflow-card">
+                <span>01</span>
+                <strong>Depots</strong>
+                <p>Create the base locations where routes begin and charging happens.</p>
+            </a>
+            <a href="{{ url_for('chargers') }}" class="workflow-card">
+                <span>02</span>
+                <strong>Chargers</strong>
+                <p>Define charger power and slot capacity per depot.</p>
+            </a>
+            <a href="{{ url_for('vehicles') }}" class="workflow-card">
+                <span>03</span>
+                <strong>Vehicles</strong>
+                <p>Add battery, efficiency, speed, and reserve settings.</p>
+            </a>
+            <a href="{{ url_for('routes') }}" class="workflow-card">
+                <span>04</span>
+                <strong>Routes</strong>
+                <p>Enter the fixed weekly trips and operating windows.</p>
+            </a>
+            <a href="{{ url_for('prices') }}" class="workflow-card">
+                <span>05</span>
+                <strong>Prices</strong>
+                <p>Load expected tariff windows for day and night charging.</p>
+            </a>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Upcoming schedule</p>
+                <h3>Routes inside the planner horizon</h3>
+            </div>
+        </div>
+        {% if upcoming_routes %}
+            <div class="timeline-list">
+                {% for route in upcoming_routes %}
+                    <div class="timeline-row">
+                        <div>
+                            <strong>{{ route.name }}</strong>
+                            <p>{{ route.start_depot_name }} to {{ route.end_depot_name }}</p>
+                        </div>
+                        <div class="timeline-meta">
+                            <span>{{ route.departure_at|datetime_display }}</span>
+                            <span>{{ route.distance_km }} km</span>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No future routes entered yet.</p>
+                <a href="{{ url_for('routes') }}" class="inline-link">Add routes</a>
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

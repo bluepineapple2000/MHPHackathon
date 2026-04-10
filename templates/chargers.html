@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Chargers{% endblock %}
+
+{% block content %}
+<section class="page-grid">
+    <article class="panel form-panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Infrastructure</p>
+                <h2>Add charger bank</h2>
+            </div>
+        </div>
+        <form method="post" class="stack-form">
+            <label>
+                Charger name
+                <input type="text" name="name" placeholder="Overnight DC Cluster" required>
+            </label>
+            <label>
+                Depot
+                <select name="depot_id" required>
+                    {% for depot in depots %}
+                        <option value="{{ depot.id }}">{{ depot.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                Power per slot (kW)
+                <input type="number" name="power_kw" min="1" step="0.1" placeholder="80" required>
+            </label>
+            <label>
+                Slot count
+                <input type="number" name="slot_count" min="1" step="1" placeholder="4" required>
+            </label>
+            <button type="submit" class="primary-button">Save charger</button>
+        </form>
+    </article>
+
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Current data</p>
+                <h2>Charger banks</h2>
+            </div>
+        </div>
+        {% if chargers %}
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Depot</th>
+                            <th>Power</th>
+                            <th>Slots</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for charger in chargers %}
+                            <tr>
+                                <td>{{ charger.name }}</td>
+                                <td>{{ charger.depot_name }}</td>
+                                <td>{{ charger.power_kw }} kW</td>
+                                <td>{{ charger.slot_count }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No chargers yet.</p>
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

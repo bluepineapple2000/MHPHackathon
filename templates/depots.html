@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}Depots{% endblock %}
+
+{% block content %}
+<section class="page-grid">
+    <article class="panel form-panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Fleet setup</p>
+                <h2>Add depot</h2>
+            </div>
+        </div>
+        <form method="post" class="stack-form">
+            <label>
+                Depot name
+                <input type="text" name="name" placeholder="Central Depot" required>
+            </label>
+            <label>
+                Location
+                <input type="text" name="location" placeholder="Stuttgart" required>
+            </label>
+            <button type="submit" class="primary-button">Save depot</button>
+        </form>
+    </article>
+
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Current data</p>
+                <h2>Depots</h2>
+            </div>
+        </div>
+        {% if depots %}
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Location</th>
+                            <th>Vehicles</th>
+                            <th>Chargers</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for depot in depots %}
+                            <tr>
+                                <td>{{ depot.name }}</td>
+                                <td>{{ depot.location }}</td>
+                                <td>{{ depot.vehicle_count }}</td>
+                                <td>{{ depot.charger_count }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No depots yet.</p>
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}
