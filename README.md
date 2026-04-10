@@ -16,6 +16,7 @@ Open `http://127.0.0.1:5000`.
 ## What the MVP does
 
 - Stores fleet, depot, charger, route, solar, and forecast data in SQLite
+- Geocodes real addresses and builds street-based route geometry with OpenStreetMap services
 - Uses depot coordinates and solar panel metadata to estimate on-site generation from weather forecasts
 - Combines market history and day-ahead price data to estimate buy prices automatically
 - Generates a weekly plan in-process inside the Flask app

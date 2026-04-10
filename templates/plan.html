@@ -50,6 +50,23 @@
 <section class="panel">
     <div class="section-heading">
         <div>
+            <p class="eyebrow">Operations map</p>
+            <h3>Depots, chargers, and planned routes</h3>
+        </div>
+    </div>
+    <div
+        id="plan-overview-map"
+        class="map-canvas large"
+        data-map-type="plan-overview"
+        data-depots='{{ depots_map_data|tojson }}'
+        data-chargers='{{ chargers_map_data|tojson }}'
+        data-routes='{{ plan_routes_map_data|tojson }}'
+    ></div>
+</section>
+
+<section class="panel">
+    <div class="section-heading">
+        <div>
             <p class="eyebrow">Results</p>
             <h3>Assigned routes</h3>
         </div>
@@ -62,9 +79,11 @@
                         <th>Route</th>
                         <th>Vehicle</th>
                         <th>Departure</th>
+                        <th>Arrival</th>
                         <th>Start SOC</th>
                         <th>End SOC</th>
                         <th>Route energy</th>
+                        <th>Route duration</th>
                         <th>Charge cost</th>
                     </tr>
                 </thead>
@@ -74,9 +93,11 @@
                             <td>{{ assignment.route_name }}</td>
                             <td>{{ assignment.vehicle_name }}</td>
                             <td>{{ assignment.departure_at|datetime_display }}</td>
+                            <td>{{ assignment.arrival_at|datetime_display }}</td>
                             <td>{{ assignment.start_soc_pct|round(1) }}%</td>
                             <td>{{ assignment.end_soc_pct|round(1) }}%</td>
                             <td>{{ assignment.route_energy_kwh|round(1) }} kWh</td>
+                            <td>{{ assignment.route_duration_minutes|round(0) }} min</td>
                             <td>{{ assignment.charging_cost|money }}</td>
                         </tr>
                     {% endfor %}

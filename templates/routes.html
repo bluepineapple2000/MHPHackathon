@@ -21,18 +21,6 @@
                 <input type="datetime-local" name="departure_at" required>
             </label>
             <label>
-                Arrival
-                <input type="datetime-local" name="arrival_at" required>
-            </label>
-            <label>
-                Distance (km)
-                <input type="number" name="distance_km" min="1" step="0.1" placeholder="72" required>
-            </label>
-            <label>
-                Required speed (km/h)
-                <input type="number" name="required_speed_kph" min="1" step="0.1" placeholder="55" required>
-            </label>
-            <label>
                 Start depot
                 <select name="start_depot_id" required>
                     {% for depot in depots %}
@@ -48,6 +36,25 @@
                     {% endfor %}
                 </select>
             </label>
+            <label>
+                Service address
+                <input type="text" name="service_address" id="service_address" placeholder="Kriegsbergstrasse 60, 70174 Stuttgart, Germany" required>
+            </label>
+            <p class="form-hint">Use a real address. The app geocodes it automatically and previews the route on the map.</p>
+            <div class="route-preview-metrics">
+                <div class="metric-chip">
+                    <span>Distance</span>
+                    <strong id="preview-distance">n/a</strong>
+                </div>
+                <div class="metric-chip">
+                    <span>Duration</span>
+                    <strong id="preview-duration">n/a</strong>
+                </div>
+                <div class="metric-chip">
+                    <span>Arrival</span>
+                    <strong id="preview-arrival">n/a</strong>
+                </div>
+            </div>
             <button type="submit" class="primary-button">Save route</button>
         </form>
     </article>
@@ -59,15 +66,24 @@
                 <h2>Scheduled routes</h2>
             </div>
         </div>
+        <div
+            id="route-planner-map"
+            class="map-canvas"
+            data-map-type="route-form"
+            data-depots='{{ depots_map_data|tojson }}'
+            data-routes='{{ routes_map_data|tojson }}'
+        ></div>
         {% if routes %}
             <div class="table-shell">
                 <table>
                     <thead>
                         <tr>
                             <th>Route</th>
+                            <th>Service point</th>
                             <th>Departure</th>
                             <th>Arrival</th>
                             <th>Distance</th>
+                            <th>Duration</th>
                             <th>Start</th>
                             <th>End</th>
                         </tr>
@@ -76,9 +92,11 @@
                         {% for route in routes %}
                             <tr>
                                 <td>{{ route.name }}</td>
+                                <td>{{ route.service_label }}</td>
                                 <td>{{ route.departure_at|datetime_display }}</td>
                                 <td>{{ route.arrival_at|datetime_display }}</td>
                                 <td>{{ route.distance_km }} km</td>
+                                <td>{{ route.route_duration_minutes|round(0) }} min</td>
                                 <td>{{ route.start_depot_name }}</td>
                                 <td>{{ route.end_depot_name }}</td>
                             </tr>

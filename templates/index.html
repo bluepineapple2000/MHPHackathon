@@ -12,6 +12,12 @@
             <input type="hidden" name="horizon_days" value="7">
             <button type="submit" class="primary-button">Generate 7-Day Plan</button>
         </form>
+        <form action="{{ url_for('seed_demo') }}" method="post" class="inline-form inline-form-secondary">
+            <button type="submit" class="secondary-button">Load Demo Dataset</button>
+        </form>
+        {% if has_demo_data %}
+            <p class="hero-note">Demo fleet loaded. Refresh the energy forecast and generate the weekly plan to see a complete scenario.</p>
+        {% endif %}
     </div>
     <div class="hero-aside">
         <div class="plan-snapshot">
