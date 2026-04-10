@@ -559,21 +559,22 @@ def insert_demo_dataset() -> tuple[bool, str]:
     return True, "Demo dataset reset to baseline."
 
 
-def load_latest_energy_forecast() -> tuple[list[sqlite3.Row], sqlite3.Row | None]:
+def load_latest_energy_forecast(limit: int | None = 96) -> tuple[list[sqlite3.Row], sqlite3.Row | None]:
     latest = query_one("SELECT MAX(generated_at) AS generated_at FROM energy_forecasts")
     if latest is None or latest["generated_at"] is None:
         return [], None
-    rows = query_all(
-        """
+    query = """
         SELECT energy_forecasts.*, depots.name AS depot_name
         FROM energy_forecasts
         JOIN depots ON depots.id = energy_forecasts.depot_id
         WHERE energy_forecasts.generated_at = ?
         ORDER BY energy_forecasts.start_at ASC, depots.name ASC
-        LIMIT 96
-        """,
-        (latest["generated_at"],),
-    )
+    """
+    params: tuple = (latest["generated_at"],)
+    if limit is not None:
+        query += "\n        LIMIT ?"
+        params = (latest["generated_at"], limit)
+    rows = query_all(query, params)
     return rows, latest
 
 
@@ -761,7 +762,7 @@ def home():
         """,
         (utc_now_iso(),),
     )
-    forecast_rows, latest_forecast = load_latest_energy_forecast()
+    forecast_rows, latest_forecast = load_latest_energy_forecast(limit=96)
     solar_preview_kwh = round(sum(row["solar_kwh_available"] for row in forecast_rows), 1) if forecast_rows else 0.0
     return render_template(
         "index.html",
@@ -1130,7 +1131,7 @@ def energy():
         flash("Solar and market-based energy forecast refreshed.", "success")
         return redirect(url_for("energy"))
 
-    forecast_rows, latest_forecast = load_latest_energy_forecast()
+    forecast_rows, latest_forecast = load_latest_energy_forecast(limit=None)
     summary = query_one(
         """
         SELECT
