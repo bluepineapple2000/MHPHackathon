@@ -8,7 +8,7 @@
         <div class="section-heading">
             <div>
                 <p class="eyebrow">Fleet setup</p>
-                <h2>Add depot</h2>
+                <h2>Add depot + solar profile</h2>
             </div>
         </div>
         <form method="post" class="stack-form">
@@ -19,6 +19,42 @@
             <label>
                 Location
                 <input type="text" name="location" placeholder="Stuttgart" required>
+            </label>
+            <label>
+                Latitude
+                <input type="number" name="latitude" step="0.0001" placeholder="48.7758" required>
+            </label>
+            <label>
+                Longitude
+                <input type="number" name="longitude" step="0.0001" placeholder="9.1829" required>
+            </label>
+            <label>
+                Solar capacity (kWp)
+                <input type="number" name="solar_capacity_kwp" min="0" step="0.1" placeholder="250" required>
+            </label>
+            <label>
+                Panel tilt (deg)
+                <input type="number" name="panel_tilt_deg" min="0" step="0.1" value="{{ defaults.panel_tilt_deg }}" required>
+            </label>
+            <label>
+                Panel azimuth (deg)
+                <input type="number" name="panel_azimuth_deg" min="0" max="360" step="0.1" value="{{ defaults.panel_azimuth_deg }}" required>
+            </label>
+            <label>
+                Solar efficiency factor
+                <input type="number" name="solar_efficiency_factor" min="0.1" max="1.0" step="0.01" value="{{ defaults.solar_efficiency_factor }}" required>
+            </label>
+            <label>
+                Grid fee (EUR/kWh)
+                <input type="number" name="grid_fee_per_kwh" min="0" step="0.01" value="{{ defaults.grid_fee_per_kwh }}" required>
+            </label>
+            <label>
+                Supplier markup (%)
+                <input type="number" name="supplier_markup_pct" min="0" step="0.1" value="{{ defaults.supplier_markup_pct }}" required>
+            </label>
+            <label>
+                Tax multiplier
+                <input type="number" name="tax_multiplier" min="1" step="0.01" value="{{ defaults.tax_multiplier }}" required>
             </label>
             <button type="submit" class="primary-button">Save depot</button>
         </form>
@@ -38,6 +74,9 @@
                         <tr>
                             <th>Name</th>
                             <th>Location</th>
+                            <th>Coordinates</th>
+                            <th>Solar</th>
+                            <th>Grid fee</th>
                             <th>Vehicles</th>
                             <th>Chargers</th>
                         </tr>
@@ -47,6 +86,9 @@
                             <tr>
                                 <td>{{ depot.name }}</td>
                                 <td>{{ depot.location }}</td>
+                                <td>{{ depot.latitude }}, {{ depot.longitude }}</td>
+                                <td>{{ depot.solar_capacity_kwp }} kWp</td>
+                                <td>{{ depot.grid_fee_per_kwh|money }}</td>
                                 <td>{{ depot.vehicle_count }}</td>
                                 <td>{{ depot.charger_count }}</td>
                             </tr>

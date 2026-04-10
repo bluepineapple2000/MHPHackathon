@@ -6,8 +6,8 @@
 <section class="hero-panel">
     <div class="hero-copy">
         <p class="eyebrow">Weekly planning prototype</p>
-        <h2>Balance route coverage, energy costs, and charging readiness across a fixed EV fleet.</h2>
-        <p class="hero-text">Enter your vehicles, depots, chargers, route schedule, and electricity forecast. GridPilot builds a 7-day plan that keeps reserve margins intact and avoids unnecessary full charging.</p>
+        <h2>Balance route coverage, solar generation, and lowest-cost grid charging across a fixed EV fleet.</h2>
+        <p class="hero-text">Enter your vehicles, depots, charger setup, and route schedule. GridPilot fetches weather to estimate solar generation, blends that with market price data, and builds a 7-day plan that uses solar first and the cheapest grid windows second.</p>
         <form action="{{ url_for('run_plan') }}" method="post" class="inline-form">
             <input type="hidden" name="horizon_days" value="7">
             <button type="submit" class="primary-button">Generate 7-Day Plan</button>
@@ -23,7 +23,7 @@
                 <a href="{{ url_for('plan_detail', plan_id=latest_plan.id) }}" class="inline-link">Open plan</a>
             {% else %}
                 <strong>No plan yet</strong>
-                <p>Fill the setup screens, then generate the first weekly assignment run.</p>
+                <p>Fill the setup screens, refresh the forecast, then generate the first assignment run.</p>
             {% endif %}
         </div>
     </div>
@@ -33,12 +33,12 @@
     <article class="stat-card">
         <span class="card-label">Depots</span>
         <strong>{{ stats.depots_count }}</strong>
-        <p>Physical operating bases for vehicle assignment and charging.</p>
+        <p>Operating bases with solar arrays, tariff assumptions, and charger capacity.</p>
     </article>
     <article class="stat-card">
         <span class="card-label">Chargers</span>
         <strong>{{ stats.chargers_count }}</strong>
-        <p>Charging banks with capacity limits that constrain scheduling.</p>
+        <p>Charging banks with slot and power limits that constrain scheduling.</p>
     </article>
     <article class="stat-card">
         <span class="card-label">Vehicles</span>
@@ -51,9 +51,9 @@
         <p>Fixed trips for the coming week, ordered by departure time.</p>
     </article>
     <article class="stat-card">
-        <span class="card-label">Price windows</span>
-        <strong>{{ stats.prices_count }}</strong>
-        <p>Time-of-day energy costs used to shift charging where possible.</p>
+        <span class="card-label">Solar kWp</span>
+        <strong>{{ stats.solar_capacity_kwp }}</strong>
+        <p>Total installed solar capacity feeding the automatic energy forecast.</p>
     </article>
 </section>
 
@@ -68,8 +68,8 @@
         <div class="workflow-grid">
             <a href="{{ url_for('depots') }}" class="workflow-card">
                 <span>01</span>
-                <strong>Depots</strong>
-                <p>Create the base locations where routes begin and charging happens.</p>
+                <strong>Depots + solar</strong>
+                <p>Define coordinates, panel size, and tariff assumptions for each base.</p>
             </a>
             <a href="{{ url_for('chargers') }}" class="workflow-card">
                 <span>02</span>
@@ -86,10 +86,10 @@
                 <strong>Routes</strong>
                 <p>Enter the fixed weekly trips and operating windows.</p>
             </a>
-            <a href="{{ url_for('prices') }}" class="workflow-card">
+            <a href="{{ url_for('energy') }}" class="workflow-card">
                 <span>05</span>
-                <strong>Prices</strong>
-                <p>Load expected tariff windows for day and night charging.</p>
+                <strong>Energy forecast</strong>
+                <p>Fetch weather and market data to estimate solar output and buy prices automatically.</p>
             </a>
         </div>
     </article>
@@ -97,31 +97,59 @@
     <article class="panel">
         <div class="section-heading">
             <div>
-                <p class="eyebrow">Upcoming schedule</p>
-                <h3>Routes inside the planner horizon</h3>
+                <p class="eyebrow">Automatic energy input</p>
+                <h3>Latest forecast snapshot</h3>
             </div>
         </div>
-        {% if upcoming_routes %}
+        {% if latest_forecast %}
             <div class="timeline-list">
-                {% for route in upcoming_routes %}
-                    <div class="timeline-row">
-                        <div>
-                            <strong>{{ route.name }}</strong>
-                            <p>{{ route.start_depot_name }} to {{ route.end_depot_name }}</p>
-                        </div>
-                        <div class="timeline-meta">
-                            <span>{{ route.departure_at|datetime_display }}</span>
-                            <span>{{ route.distance_km }} km</span>
-                        </div>
+                <div class="timeline-row">
+                    <div>
+                        <strong>Last refreshed</strong>
+                        <p>Forecast generated from weather plus market history and day-ahead data.</p>
                     </div>
-                {% endfor %}
+                    <div class="timeline-meta">
+                        <span>{{ latest_forecast.generated_at|datetime_display }}</span>
+                        <span>{{ solar_preview_kwh }} kWh solar preview</span>
+                    </div>
+                </div>
             </div>
         {% else %}
             <div class="empty-state">
-                <p>No future routes entered yet.</p>
-                <a href="{{ url_for('routes') }}" class="inline-link">Add routes</a>
+                <p>No automatic energy forecast yet.</p>
+                <a href="{{ url_for('energy') }}" class="inline-link">Refresh forecast</a>
             </div>
         {% endif %}
     </article>
+</section>
+
+<section class="panel">
+    <div class="section-heading">
+        <div>
+            <p class="eyebrow">Upcoming schedule</p>
+            <h3>Routes inside the planner horizon</h3>
+        </div>
+    </div>
+    {% if upcoming_routes %}
+        <div class="timeline-list">
+            {% for route in upcoming_routes %}
+                <div class="timeline-row">
+                    <div>
+                        <strong>{{ route.name }}</strong>
+                        <p>{{ route.start_depot_name }} to {{ route.end_depot_name }}</p>
+                    </div>
+                    <div class="timeline-meta">
+                        <span>{{ route.departure_at|datetime_display }}</span>
+                        <span>{{ route.distance_km }} km</span>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>No future routes entered yet.</p>
+            <a href="{{ url_for('routes') }}" class="inline-link">Add routes</a>
+        </div>
+    {% endif %}
 </section>
 {% endblock %}

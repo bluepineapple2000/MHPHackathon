@@ -14,7 +14,7 @@
             <span class="card-label">Coverage</span>
             <strong>{{ coverage|round(0) }}%</strong>
             <p>{{ plan_run.served_routes_count }} served / {{ plan_run.unserved_routes_count }} unserved</p>
-            <p>{{ plan_run.total_cost|money }} estimated charging cost</p>
+            <p>{{ plan_run.total_cost|money }} charging cost</p>
         </div>
     </div>
 </section>
@@ -29,6 +29,16 @@
         <span class="card-label">Charge sessions</span>
         <strong>{{ charge_plans|length }}</strong>
         <p>Charging windows inserted before departures where needed.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Solar energy</span>
+        <strong>{{ total_solar_kwh }}</strong>
+        <p>kWh covered by forecasted solar generation at the depot.</p>
+    </article>
+    <article class="stat-card">
+        <span class="card-label">Grid energy</span>
+        <strong>{{ total_grid_kwh }}</strong>
+        <p>kWh bought from the grid after using solar-first charging where possible.</p>
     </article>
     <article class="stat-card">
         <span class="card-label">Unserved</span>
@@ -99,6 +109,7 @@
                         <div class="timeline-meta">
                             <span>{{ session.start_at|datetime_display }}</span>
                             <span>{{ session.energy_kwh|round(1) }} kWh to {{ session.target_soc_pct|round(1) }}%</span>
+                            <span>{{ session.solar_kwh|round(1) }} solar / {{ session.grid_kwh|round(1) }} grid</span>
                         </div>
                     </div>
                 {% endfor %}

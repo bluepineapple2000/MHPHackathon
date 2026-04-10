@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 
 BLOCK_MINUTES = 30
-DEFAULT_PRICE_PER_KWH = 0.35
+DEFAULT_GRID_PRICE_PER_KWH = 0.35
 EPSILON = 1e-6
 
 
@@ -46,12 +46,14 @@ class Route:
 
 
 @dataclass
-class PriceWindow:
+class EnergyWindow:
     id: int
     depot_id: int
     start_at: datetime
     end_at: datetime
-    price_per_kwh: float
+    solar_kwh_available: float
+    buy_price_per_kwh: float
+    price_source: str = "forecast"
 
 
 @dataclass
@@ -73,6 +75,8 @@ class ChargeSession:
     end_at: datetime
     target_soc_pct: float
     energy_kwh: float
+    solar_kwh: float
+    grid_kwh: float
     expected_cost: float
 
 
@@ -107,7 +111,7 @@ def floor_to_block(moment: datetime) -> datetime:
     return moment.replace(minute=minute, second=0, microsecond=0)
 
 
-def iter_blocks(start_at: datetime, end_at: datetime) -> List[tuple[datetime, datetime, float]]:
+def iter_blocks(start_at: datetime, end_at: datetime) -> List[tuple[datetime, datetime, datetime, float]]:
     if end_at <= start_at:
         return []
     cursor = floor_to_block(start_at)
@@ -121,22 +125,6 @@ def iter_blocks(start_at: datetime, end_at: datetime) -> List[tuple[datetime, da
             blocks.append((cursor, overlap_start, overlap_end, duration_hours))
         cursor = block_end
     return blocks
-
-
-def lookup_price(
-    depot_id: int,
-    interval_start: datetime,
-    interval_end: datetime,
-    windows_by_depot: Dict[int, List[PriceWindow]],
-) -> float:
-    prices = [
-        window.price_per_kwh
-        for window in windows_by_depot.get(depot_id, [])
-        if window.start_at < interval_end and window.end_at > interval_start
-    ]
-    if not prices:
-        return DEFAULT_PRICE_PER_KWH
-    return min(prices)
 
 
 def route_energy_kwh(route: Route, vehicle: Vehicle) -> float:
@@ -169,6 +157,18 @@ def occupancy_key(charger_id: int, block_anchor: datetime) -> tuple[int, datetim
     return charger_id, block_anchor
 
 
+def energy_window_lookup(
+    depot_id: int,
+    block_anchor: datetime,
+    energy_windows_by_key: Dict[tuple[int, datetime], EnergyWindow],
+) -> EnergyWindow | None:
+    return energy_windows_by_key.get((depot_id, block_anchor))
+
+
+def solar_usage_key(depot_id: int, block_anchor: datetime) -> tuple[int, datetime]:
+    return depot_id, block_anchor
+
+
 def merge_sessions(
     selected_blocks: List[dict],
     starting_energy_kwh: float,
@@ -186,12 +186,11 @@ def merge_sessions(
     for block in selected_blocks:
         if current is None:
             current = deepcopy(block)
-        elif (
-            current["charger_id"] == block["charger_id"]
-            and current["end_at"] == block["start_at"]
-        ):
+        elif current["charger_id"] == block["charger_id"] and current["end_at"] == block["start_at"]:
             current["end_at"] = block["end_at"]
             current["energy_kwh"] += block["energy_kwh"]
+            current["solar_kwh"] += block["solar_kwh"]
+            current["grid_kwh"] += block["grid_kwh"]
             current["expected_cost"] += block["expected_cost"]
         else:
             accumulated_energy += current["energy_kwh"]
@@ -203,6 +202,8 @@ def merge_sessions(
                     end_at=current["end_at"],
                     target_soc_pct=min(100.0, accumulated_energy / battery_kwh * 100),
                     energy_kwh=current["energy_kwh"],
+                    solar_kwh=current["solar_kwh"],
+                    grid_kwh=current["grid_kwh"],
                     expected_cost=current["expected_cost"],
                 )
             )
@@ -218,6 +219,8 @@ def merge_sessions(
                 end_at=current["end_at"],
                 target_soc_pct=min(100.0, accumulated_energy / battery_kwh * 100),
                 energy_kwh=current["energy_kwh"],
+                solar_kwh=current["solar_kwh"],
+                grid_kwh=current["grid_kwh"],
                 expected_cost=current["expected_cost"],
             )
         )
@@ -230,8 +233,9 @@ def plan_charging(
     vehicle: Vehicle,
     route: Route,
     chargers_by_depot: Dict[int, List[Charger]],
-    windows_by_depot: Dict[int, List[PriceWindow]],
+    energy_windows_by_key: Dict[tuple[int, datetime], EnergyWindow],
     occupancy: Dict[tuple[int, datetime], int],
+    solar_usage: Dict[tuple[int, datetime], float],
 ) -> tuple[bool, List[ChargeSession], float, float, str]:
     reserve_kwh = vehicle.battery_kwh * vehicle.min_reserve_pct / 100
     needed_energy_kwh = route_energy_kwh(route, vehicle) + reserve_kwh
@@ -257,16 +261,24 @@ def plan_charging(
             energy_capacity = charging_power_kw * duration_hours
             if energy_capacity <= EPSILON:
                 continue
-            price = lookup_price(state.depot_id, start_at, end_at, windows_by_depot)
+            energy_window = energy_window_lookup(state.depot_id, block_anchor, energy_windows_by_key)
+            buy_price = DEFAULT_GRID_PRICE_PER_KWH
+            solar_available = 0.0
+            if energy_window is not None:
+                buy_price = energy_window.buy_price_per_kwh
+                already_used = solar_usage.get(solar_usage_key(state.depot_id, block_anchor), 0.0)
+                solar_available = max(0.0, energy_window.solar_kwh_available - already_used)
+            effective_price = buy_price * max(0.0, energy_capacity - solar_available) / energy_capacity
             candidate_blocks.append(
                 {
                     "charger_id": charger.id,
                     "block_anchor": block_anchor,
                     "start_at": start_at,
                     "end_at": end_at,
-                    "duration_hours": duration_hours,
                     "energy_capacity": energy_capacity,
-                    "price_per_kwh": price,
+                    "buy_price_per_kwh": buy_price,
+                    "solar_available": solar_available,
+                    "effective_price": effective_price,
                 }
             )
 
@@ -274,7 +286,12 @@ def plan_charging(
         return False, [], 0.0, starting_energy_kwh, "no charging time available before departure"
 
     candidate_blocks.sort(
-        key=lambda block: (block["price_per_kwh"], -block["energy_capacity"], block["start_at"])
+        key=lambda block: (
+            block["effective_price"],
+            block["buy_price_per_kwh"],
+            -block["solar_available"],
+            block["start_at"],
+        )
     )
 
     remaining_kwh = needed_energy_kwh - starting_energy_kwh
@@ -287,6 +304,8 @@ def plan_charging(
         used_energy = min(remaining_kwh, block["energy_capacity"])
         if used_energy <= EPSILON:
             continue
+        solar_kwh = min(used_energy, block["solar_available"])
+        grid_kwh = used_energy - solar_kwh
         selected_blocks.append(
             {
                 "charger_id": block["charger_id"],
@@ -294,11 +313,13 @@ def plan_charging(
                 "start_at": block["start_at"],
                 "end_at": block["end_at"],
                 "energy_kwh": used_energy,
-                "expected_cost": used_energy * block["price_per_kwh"],
+                "solar_kwh": solar_kwh,
+                "grid_kwh": grid_kwh,
+                "expected_cost": grid_kwh * block["buy_price_per_kwh"],
             }
         )
         remaining_kwh -= used_energy
-        total_cost += used_energy * block["price_per_kwh"]
+        total_cost += grid_kwh * block["buy_price_per_kwh"]
 
     if remaining_kwh > EPSILON:
         return False, [], 0.0, starting_energy_kwh, "insufficient charging capacity before departure"
@@ -313,8 +334,9 @@ def evaluate_vehicle_for_route(
     state: VehicleState,
     route: Route,
     chargers_by_depot: Dict[int, List[Charger]],
-    windows_by_depot: Dict[int, List[PriceWindow]],
+    energy_windows_by_key: Dict[tuple[int, datetime], EnergyWindow],
     occupancy: Dict[tuple[int, datetime], int],
+    solar_usage: Dict[tuple[int, datetime], float],
 ) -> dict:
     if state.depot_id != route.start_depot_id:
         return {"feasible": False, "reason": "vehicle is at a different depot"}
@@ -324,7 +346,13 @@ def evaluate_vehicle_for_route(
         return {"feasible": False, "reason": "vehicle cannot meet route speed requirement"}
 
     feasible, sessions, charging_cost, departure_energy_kwh, charge_reason = plan_charging(
-        state, vehicle, route, chargers_by_depot, windows_by_depot, occupancy
+        state,
+        vehicle,
+        route,
+        chargers_by_depot,
+        energy_windows_by_key,
+        occupancy,
+        solar_usage,
     )
     if not feasible:
         return {"feasible": False, "reason": charge_reason}
@@ -335,35 +363,43 @@ def evaluate_vehicle_for_route(
     if ending_energy_kwh + EPSILON < reserve_kwh:
         return {"feasible": False, "reason": "route would end below safety reserve"}
 
+    total_solar_kwh = sum(session.solar_kwh for session in sessions)
     overcharge_kwh = max(0.0, departure_energy_kwh - (trip_energy_kwh + reserve_kwh))
     return {
         "feasible": True,
         "vehicle": vehicle,
-        "state": state,
         "sessions": sessions,
         "charging_cost": charging_cost,
         "departure_energy_kwh": departure_energy_kwh,
         "ending_energy_kwh": ending_energy_kwh,
         "trip_energy_kwh": trip_energy_kwh,
-        "score": (charging_cost, overcharge_kwh, state.available_at, vehicle.name.lower()),
+        "score": (charging_cost, -total_solar_kwh, overcharge_kwh, state.available_at, vehicle.name.lower()),
     }
 
 
 def commit_sessions(
+    depot_id: int,
     sessions: List[ChargeSession],
     occupancy: Dict[tuple[int, datetime], int],
+    solar_usage: Dict[tuple[int, datetime], float],
 ) -> None:
     for session in sessions:
-        for block_anchor, _, _, _ in iter_blocks(session.start_at, session.end_at):
+        total_duration_hours = (session.end_at - session.start_at).total_seconds() / 3600
+        for block_anchor, overlap_start, overlap_end, _duration_hours in iter_blocks(session.start_at, session.end_at):
             key = occupancy_key(session.charger_id, block_anchor)
             occupancy[key] = occupancy.get(key, 0) + 1
+            overlap_hours = (overlap_end - overlap_start).total_seconds() / 3600
+            if total_duration_hours > 0 and session.solar_kwh > 0:
+                solar_fraction = overlap_hours / total_duration_hours
+                solar_key = solar_usage_key(depot_id, block_anchor)
+                solar_usage[solar_key] = solar_usage.get(solar_key, 0.0) + session.solar_kwh * solar_fraction
 
 
 def run_weekly_plan(
     vehicles: List[Vehicle],
     chargers: List[Charger],
     routes: List[Route],
-    price_windows: List[PriceWindow],
+    energy_windows: List[EnergyWindow],
     horizon_start: Optional[datetime] = None,
     horizon_days: int = 7,
 ) -> PlanResult:
@@ -381,20 +417,18 @@ def run_weekly_plan(
     for charger in chargers:
         chargers_by_depot.setdefault(charger.depot_id, []).append(charger)
 
-    windows_by_depot: Dict[int, List[PriceWindow]] = {}
-    for window in price_windows:
-        windows_by_depot.setdefault(window.depot_id, []).append(window)
-
-    for depot_windows in windows_by_depot.values():
-        depot_windows.sort(key=lambda window: window.start_at)
+    energy_windows_by_key = {
+        (window.depot_id, window.start_at): window
+        for window in energy_windows
+    }
 
     states = build_vehicle_states(vehicles, horizon_start)
     occupancy: Dict[tuple[int, datetime], int] = {}
+    solar_usage: Dict[tuple[int, datetime], float] = {}
     assignments: List[RouteAssignment] = []
     charge_sessions: List[ChargeSession] = []
     unserved_routes: List[UnservedRoute] = []
     total_cost = 0.0
-    vehicles_by_id = {vehicle.id: vehicle for vehicle in vehicles}
 
     for route in filtered_routes:
         best_candidate = None
@@ -405,8 +439,9 @@ def run_weekly_plan(
                 states[vehicle.id],
                 route,
                 chargers_by_depot,
-                windows_by_depot,
+                energy_windows_by_key,
                 occupancy,
+                solar_usage,
             )
             if not candidate["feasible"]:
                 reasons.append(candidate["reason"])
@@ -421,7 +456,7 @@ def run_weekly_plan(
 
         chosen_vehicle = best_candidate["vehicle"]
         chosen_state = states[chosen_vehicle.id]
-        commit_sessions(best_candidate["sessions"], occupancy)
+        commit_sessions(chosen_state.depot_id, best_candidate["sessions"], occupancy, solar_usage)
         charge_sessions.extend(best_candidate["sessions"])
         total_cost += best_candidate["charging_cost"]
 
@@ -440,12 +475,6 @@ def run_weekly_plan(
         chosen_state.available_at = route.arrival_at
         chosen_state.depot_id = route.end_depot_id
         chosen_state.energy_kwh = max(0.0, best_candidate["ending_energy_kwh"])
-
-    for session in charge_sessions:
-        vehicle = vehicles_by_id[session.vehicle_id]
-        session.target_soc_pct = min(100.0, session.target_soc_pct)
-        if session.target_soc_pct < vehicle.min_reserve_pct:
-            session.target_soc_pct = vehicle.min_reserve_pct
 
     return PlanResult(
         assignments=assignments,

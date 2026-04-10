@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime
 
-from planner import Charger, PriceWindow, Route, Vehicle, run_weekly_plan
+from planner import Charger, EnergyWindow, Route, Vehicle, run_weekly_plan
 
 
 class PlannerTests(unittest.TestCase):
@@ -37,7 +37,7 @@ class PlannerTests(unittest.TestCase):
             vehicles=vehicles,
             chargers=[],
             routes=routes,
-            price_windows=[],
+            energy_windows=[],
             horizon_start=start,
             horizon_days=7,
         )
@@ -47,7 +47,7 @@ class PlannerTests(unittest.TestCase):
         self.assertAlmostEqual(result.assignments[0].start_soc_pct, 60.0)
         self.assertAlmostEqual(result.assignments[0].end_soc_pct, 30.0)
 
-    def test_prefers_cheaper_charging_window_and_stops_at_needed_soc(self):
+    def test_prefers_available_solar_before_grid(self):
         start = datetime(2026, 4, 13, 9, 0)
         vehicles = [
             Vehicle(
@@ -62,7 +62,7 @@ class PlannerTests(unittest.TestCase):
                 depot_id=1,
             )
         ]
-        chargers = [Charger(id=1, name="Fast Charger", depot_id=1, power_kw=60, slot_count=1)]
+        chargers = [Charger(id=1, name="Solar Charger", depot_id=1, power_kw=60, slot_count=1)]
         routes = [
             Route(
                 id=1,
@@ -75,20 +75,78 @@ class PlannerTests(unittest.TestCase):
                 end_depot_id=1,
             )
         ]
-        prices = [
-            PriceWindow(
+        energy_windows = [
+            EnergyWindow(
+                id=1,
+                depot_id=1,
+                start_at=datetime(2026, 4, 13, 10, 0),
+                end_at=datetime(2026, 4, 13, 10, 30),
+                solar_kwh_available=30.0,
+                buy_price_per_kwh=0.30,
+            )
+        ]
+
+        result = run_weekly_plan(
+            vehicles=vehicles,
+            chargers=chargers,
+            routes=routes,
+            energy_windows=energy_windows,
+            horizon_start=start,
+            horizon_days=7,
+        )
+
+        self.assertEqual(result.served_routes_count, 1)
+        self.assertEqual(len(result.charge_sessions), 1)
+        session = result.charge_sessions[0]
+        self.assertAlmostEqual(session.solar_kwh, 30.0)
+        self.assertAlmostEqual(session.grid_kwh, 0.0)
+        self.assertAlmostEqual(session.expected_cost, 0.0)
+        self.assertAlmostEqual(session.target_soc_pct, 50.0)
+
+    def test_prefers_cheapest_grid_window_when_solar_is_absent(self):
+        start = datetime(2026, 4, 13, 9, 0)
+        vehicles = [
+            Vehicle(
+                id=1,
+                name="Bus 3",
+                battery_kwh=100,
+                current_soc_pct=20,
+                min_reserve_pct=20,
+                efficiency_kwh_per_km=0.5,
+                max_speed_kph=90,
+                max_charge_power_kw=60,
+                depot_id=1,
+            )
+        ]
+        chargers = [Charger(id=1, name="Grid Charger", depot_id=1, power_kw=60, slot_count=1)]
+        routes = [
+            Route(
+                id=1,
+                name="Afternoon Route",
+                departure_at=datetime(2026, 4, 13, 11, 30),
+                arrival_at=datetime(2026, 4, 13, 12, 30),
+                distance_km=60,
+                required_speed_kph=60,
+                start_depot_id=1,
+                end_depot_id=1,
+            )
+        ]
+        energy_windows = [
+            EnergyWindow(
                 id=1,
                 depot_id=1,
                 start_at=datetime(2026, 4, 13, 9, 0),
-                end_at=datetime(2026, 4, 13, 10, 0),
-                price_per_kwh=0.45,
+                end_at=datetime(2026, 4, 13, 9, 30),
+                solar_kwh_available=0.0,
+                buy_price_per_kwh=0.55,
             ),
-            PriceWindow(
+            EnergyWindow(
                 id=2,
                 depot_id=1,
                 start_at=datetime(2026, 4, 13, 10, 0),
-                end_at=datetime(2026, 4, 13, 11, 0),
-                price_per_kwh=0.20,
+                end_at=datetime(2026, 4, 13, 10, 30),
+                solar_kwh_available=0.0,
+                buy_price_per_kwh=0.18,
             ),
         ]
 
@@ -96,7 +154,7 @@ class PlannerTests(unittest.TestCase):
             vehicles=vehicles,
             chargers=chargers,
             routes=routes,
-            price_windows=prices,
+            energy_windows=energy_windows,
             horizon_start=start,
             horizon_days=7,
         )
@@ -105,9 +163,8 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(len(result.charge_sessions), 1)
         session = result.charge_sessions[0]
         self.assertEqual(session.start_at, datetime(2026, 4, 13, 10, 0))
-        self.assertEqual(session.end_at, datetime(2026, 4, 13, 10, 30))
-        self.assertAlmostEqual(session.energy_kwh, 30.0)
-        self.assertAlmostEqual(session.target_soc_pct, 50.0)
+        self.assertAlmostEqual(session.grid_kwh, 30.0)
+        self.assertAlmostEqual(session.expected_cost, 5.4)
 
     def test_marks_route_unserved_when_speed_is_impossible(self):
         start = datetime(2026, 4, 13, 8, 0)
@@ -141,7 +198,7 @@ class PlannerTests(unittest.TestCase):
             vehicles=vehicles,
             chargers=[],
             routes=routes,
-            price_windows=[],
+            energy_windows=[],
             horizon_start=start,
             horizon_days=7,
         )

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Energy Forecast{% endblock %}
+
+{% block content %}
+<section class="page-grid">
+    <article class="panel form-panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Automatic inputs</p>
+                <h2>Refresh energy forecast</h2>
+            </div>
+        </div>
+        <div class="empty-state">
+            <p>GridPilot uses depot coordinates and solar panel settings to fetch weather forecasts, estimate solar output, and combine that with market price history plus day-ahead prices.</p>
+        </div>
+        <form method="post" class="stack-form">
+            <button type="submit" class="primary-button">Fetch 7-day forecast</button>
+        </form>
+        <div class="empty-state">
+            <p>Charging uses the forecast automatically: solar first where available, then the lowest predicted grid-cost slots.</p>
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="section-heading">
+            <div>
+                <p class="eyebrow">Forecast summary</p>
+                <h2>Solar and buy price outlook</h2>
+            </div>
+        </div>
+        {% if latest_forecast %}
+            <div class="timeline-list">
+                <div class="timeline-row">
+                    <div>
+                        <strong>Last refresh</strong>
+                        <p>{{ latest_forecast.generated_at|datetime_display }}</p>
+                    </div>
+                    <div class="timeline-meta">
+                        <span>{{ summary.solar_total if summary else 0 }} kWh solar</span>
+                        <span>{{ summary.avg_buy_price|money if summary else "EUR 0.00" }} avg buy price</span>
+                    </div>
+                </div>
+            </div>
+            <div class="table-shell">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Depot</th>
+                            <th>Start</th>
+                            <th>Solar available</th>
+                            <th>Buy price</th>
+                            <th>Source</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in forecast_rows %}
+                            <tr>
+                                <td>{{ row.depot_name }}</td>
+                                <td>{{ row.start_at|datetime_display }}</td>
+                                <td>{{ row.solar_kwh_available|round(2) }} kWh</td>
+                                <td>{{ row.buy_price_per_kwh|money }}</td>
+                                <td>{{ row.price_source }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <p>No forecast has been generated yet.</p>
+                {% if not depots %}
+                    <a href="{{ url_for('depots') }}" class="inline-link">Add a depot with solar metadata first</a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}

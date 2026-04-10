@@ -6,7 +6,18 @@ from pathlib import Path
 
 from flask import Flask, flash, g, redirect, render_template, request, url_for
 
-from planner import Charger, PriceWindow, Route, Vehicle, run_weekly_plan
+from forecast import (
+    DEFAULT_GRID_FEE,
+    DEFAULT_PANEL_AZIMUTH,
+    DEFAULT_PANEL_TILT,
+    DEFAULT_SOLAR_EFFICIENCY,
+    DEFAULT_SUPPLIER_MARKUP_PCT,
+    DEFAULT_TAX_MULTIPLIER,
+    DepotEnergyProfile,
+    ForecastError,
+    build_energy_forecast,
+)
+from planner import Charger, EnergyWindow, Route, Vehicle, run_weekly_plan
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -24,6 +35,15 @@ CREATE TABLE IF NOT EXISTS depots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     location TEXT NOT NULL,
+    latitude REAL NOT NULL DEFAULT 48.7758,
+    longitude REAL NOT NULL DEFAULT 9.1829,
+    solar_capacity_kwp REAL NOT NULL DEFAULT 250.0,
+    panel_tilt_deg REAL NOT NULL DEFAULT 30.0,
+    panel_azimuth_deg REAL NOT NULL DEFAULT 180.0,
+    solar_efficiency_factor REAL NOT NULL DEFAULT 0.82,
+    grid_fee_per_kwh REAL NOT NULL DEFAULT 0.18,
+    supplier_markup_pct REAL NOT NULL DEFAULT 3.0,
+    tax_multiplier REAL NOT NULL DEFAULT 1.19,
     created_at TEXT NOT NULL
 );
 
@@ -66,13 +86,15 @@ CREATE TABLE IF NOT EXISTS routes (
     FOREIGN KEY (end_depot_id) REFERENCES depots (id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS price_windows (
+CREATE TABLE IF NOT EXISTS energy_forecasts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     depot_id INTEGER NOT NULL,
     start_at TEXT NOT NULL,
     end_at TEXT NOT NULL,
-    price_per_kwh REAL NOT NULL,
-    created_at TEXT NOT NULL,
+    solar_kwh_available REAL NOT NULL,
+    buy_price_per_kwh REAL NOT NULL,
+    price_source TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
     FOREIGN KEY (depot_id) REFERENCES depots (id) ON DELETE CASCADE
 );
 
@@ -111,6 +133,8 @@ CREATE TABLE IF NOT EXISTS charge_plans (
     end_at TEXT NOT NULL,
     target_soc_pct REAL NOT NULL,
     energy_kwh REAL NOT NULL,
+    solar_kwh REAL NOT NULL DEFAULT 0,
+    grid_kwh REAL NOT NULL DEFAULT 0,
     expected_cost REAL NOT NULL,
     FOREIGN KEY (plan_run_id) REFERENCES plan_runs (id) ON DELETE CASCADE,
     FOREIGN KEY (vehicle_id) REFERENCES vehicles (id) ON DELETE CASCADE,
@@ -152,11 +176,31 @@ def close_db(_exception: Exception | None) -> None:
         database.close()
 
 
+def ensure_column(connection: sqlite3.Connection, table_name: str, column_name: str, ddl: str) -> None:
+    columns = {
+        row[1]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in columns:
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {ddl}")
+
+
 def init_db() -> None:
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(app.config["DATABASE"])
     try:
         connection.executescript(SCHEMA)
+        ensure_column(connection, "depots", "latitude", "latitude REAL NOT NULL DEFAULT 48.7758")
+        ensure_column(connection, "depots", "longitude", "longitude REAL NOT NULL DEFAULT 9.1829")
+        ensure_column(connection, "depots", "solar_capacity_kwp", "solar_capacity_kwp REAL NOT NULL DEFAULT 250.0")
+        ensure_column(connection, "depots", "panel_tilt_deg", "panel_tilt_deg REAL NOT NULL DEFAULT 30.0")
+        ensure_column(connection, "depots", "panel_azimuth_deg", "panel_azimuth_deg REAL NOT NULL DEFAULT 180.0")
+        ensure_column(connection, "depots", "solar_efficiency_factor", "solar_efficiency_factor REAL NOT NULL DEFAULT 0.82")
+        ensure_column(connection, "depots", "grid_fee_per_kwh", "grid_fee_per_kwh REAL NOT NULL DEFAULT 0.18")
+        ensure_column(connection, "depots", "supplier_markup_pct", "supplier_markup_pct REAL NOT NULL DEFAULT 3.0")
+        ensure_column(connection, "depots", "tax_multiplier", "tax_multiplier REAL NOT NULL DEFAULT 1.19")
+        ensure_column(connection, "charge_plans", "solar_kwh", "solar_kwh REAL NOT NULL DEFAULT 0")
+        ensure_column(connection, "charge_plans", "grid_kwh", "grid_kwh REAL NOT NULL DEFAULT 0")
         connection.commit()
     finally:
         connection.close()
@@ -178,18 +222,14 @@ def execute(query: str, params: tuple = ()) -> int:
 
 def latest_plan_id() -> int | None:
     row = query_one("SELECT id FROM plan_runs ORDER BY created_at DESC LIMIT 1")
-    if row is None:
-        return None
-    return row["id"]
+    return row["id"] if row else None
 
 
 def coverage_ratio(plan_run: sqlite3.Row | None) -> float:
     if plan_run is None:
         return 0.0
     total = plan_run["served_routes_count"] + plan_run["unserved_routes_count"]
-    if total == 0:
-        return 0.0
-    return plan_run["served_routes_count"] / total * 100
+    return 0.0 if total == 0 else plan_run["served_routes_count"] / total * 100
 
 
 @app.template_filter("datetime_display")
@@ -201,14 +241,75 @@ def datetime_display(value: str | None) -> str:
 
 @app.template_filter("money")
 def money(value: float | None) -> str:
-    if value is None:
-        return "EUR 0.00"
-    return f"EUR {value:,.2f}"
+    return f"EUR {0 if value is None else value:,.2f}"
 
 
 @app.context_processor
 def inject_navigation_state() -> dict:
     return {"latest_plan_id": latest_plan_id()}
+
+
+def depots_as_profiles(rows: list[sqlite3.Row]) -> list[DepotEnergyProfile]:
+    return [
+        DepotEnergyProfile(
+            id=row["id"],
+            name=row["name"],
+            location=row["location"],
+            latitude=row["latitude"],
+            longitude=row["longitude"],
+            solar_capacity_kwp=row["solar_capacity_kwp"],
+            panel_tilt_deg=row["panel_tilt_deg"],
+            panel_azimuth_deg=row["panel_azimuth_deg"],
+            solar_efficiency_factor=row["solar_efficiency_factor"],
+            grid_fee_per_kwh=row["grid_fee_per_kwh"],
+            supplier_markup_pct=row["supplier_markup_pct"],
+            tax_multiplier=row["tax_multiplier"],
+        )
+        for row in rows
+    ]
+
+
+def persist_energy_forecast(windows: list[EnergyWindow]) -> None:
+    db = get_db()
+    db.execute("DELETE FROM energy_forecasts")
+    generated_at = utc_now_iso()
+    for window in windows:
+        db.execute(
+            """
+            INSERT INTO energy_forecasts (
+                depot_id, start_at, end_at, solar_kwh_available, buy_price_per_kwh,
+                price_source, generated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                window.depot_id,
+                window.start_at.isoformat(timespec="minutes"),
+                window.end_at.isoformat(timespec="minutes"),
+                window.solar_kwh_available,
+                window.buy_price_per_kwh,
+                window.price_source,
+                generated_at,
+            ),
+        )
+    db.commit()
+
+
+def load_latest_energy_forecast() -> tuple[list[sqlite3.Row], sqlite3.Row | None]:
+    latest = query_one("SELECT MAX(generated_at) AS generated_at FROM energy_forecasts")
+    if latest is None or latest["generated_at"] is None:
+        return [], None
+    rows = query_all(
+        """
+        SELECT energy_forecasts.*, depots.name AS depot_name
+        FROM energy_forecasts
+        JOIN depots ON depots.id = energy_forecasts.depot_id
+        WHERE energy_forecasts.generated_at = ?
+        ORDER BY energy_forecasts.start_at ASC, depots.name ASC
+        LIMIT 96
+        """,
+        (latest["generated_at"],),
+    )
+    return rows, latest
 
 
 @app.route("/")
@@ -220,7 +321,8 @@ def home():
             (SELECT COUNT(*) FROM chargers) AS chargers_count,
             (SELECT COUNT(*) FROM vehicles) AS vehicles_count,
             (SELECT COUNT(*) FROM routes) AS routes_count,
-            (SELECT COUNT(*) FROM price_windows) AS prices_count
+            (SELECT COUNT(*) FROM energy_forecasts) AS forecast_slot_count,
+            (SELECT ROUND(COALESCE(SUM(solar_capacity_kwp), 0), 1) FROM depots) AS solar_capacity_kwp
         """
     )
     latest_plan = query_one("SELECT * FROM plan_runs ORDER BY created_at DESC LIMIT 1")
@@ -236,12 +338,16 @@ def home():
         """,
         (utc_now_iso(),),
     )
+    forecast_rows, latest_forecast = load_latest_energy_forecast()
+    solar_preview_kwh = round(sum(row["solar_kwh_available"] for row in forecast_rows), 1) if forecast_rows else 0.0
     return render_template(
         "index.html",
         stats=stats,
         latest_plan=latest_plan,
         latest_plan_coverage=coverage_ratio(latest_plan),
         upcoming_routes=upcoming_routes,
+        latest_forecast=latest_forecast,
+        solar_preview_kwh=solar_preview_kwh,
     )
 
 
@@ -250,14 +356,44 @@ def depots():
     if request.method == "POST":
         name = request.form["name"].strip()
         location = request.form["location"].strip()
+        latitude = float(request.form["latitude"])
+        longitude = float(request.form["longitude"])
+        solar_capacity_kwp = float(request.form["solar_capacity_kwp"])
+        panel_tilt_deg = float(request.form["panel_tilt_deg"])
+        panel_azimuth_deg = float(request.form["panel_azimuth_deg"])
+        solar_efficiency_factor = float(request.form["solar_efficiency_factor"])
+        grid_fee_per_kwh = float(request.form["grid_fee_per_kwh"])
+        supplier_markup_pct = float(request.form["supplier_markup_pct"])
+        tax_multiplier = float(request.form["tax_multiplier"])
         if not name or not location:
             flash("Depot name and location are required.", "error")
+        elif solar_capacity_kwp < 0 or solar_efficiency_factor <= 0 or tax_multiplier <= 0:
+            flash("Solar capacity and tariff settings must be valid positive values.", "error")
         else:
             execute(
-                "INSERT INTO depots (name, location, created_at) VALUES (?, ?, ?)",
-                (name, location, utc_now_iso()),
+                """
+                INSERT INTO depots (
+                    name, location, latitude, longitude, solar_capacity_kwp, panel_tilt_deg,
+                    panel_azimuth_deg, solar_efficiency_factor, grid_fee_per_kwh,
+                    supplier_markup_pct, tax_multiplier, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    name,
+                    location,
+                    latitude,
+                    longitude,
+                    solar_capacity_kwp,
+                    panel_tilt_deg,
+                    panel_azimuth_deg,
+                    solar_efficiency_factor,
+                    grid_fee_per_kwh,
+                    supplier_markup_pct,
+                    tax_multiplier,
+                    utc_now_iso(),
+                ),
             )
-            flash(f"Depot '{name}' added.", "success")
+            flash(f"Depot '{name}' added with solar settings.", "success")
             return redirect(url_for("depots"))
 
     depots_list = query_all(
@@ -272,7 +408,18 @@ def depots():
         ORDER BY depots.name ASC
         """
     )
-    return render_template("depots.html", depots=depots_list)
+    return render_template(
+        "depots.html",
+        depots=depots_list,
+        defaults={
+            "panel_tilt_deg": DEFAULT_PANEL_TILT,
+            "panel_azimuth_deg": DEFAULT_PANEL_AZIMUTH,
+            "solar_efficiency_factor": DEFAULT_SOLAR_EFFICIENCY,
+            "grid_fee_per_kwh": DEFAULT_GRID_FEE,
+            "supplier_markup_pct": DEFAULT_SUPPLIER_MARKUP_PCT,
+            "tax_multiplier": DEFAULT_TAX_MULTIPLIER,
+        },
+    )
 
 
 @app.route("/chargers", methods=["GET", "POST"])
@@ -435,60 +582,63 @@ def routes():
     return render_template("routes.html", routes=route_list, depots=depots_list)
 
 
-@app.route("/prices", methods=["GET", "POST"])
-def prices():
-    depots_list = query_all("SELECT * FROM depots ORDER BY name ASC")
+@app.route("/energy", methods=["GET", "POST"])
+def energy():
+    depots_rows = query_all("SELECT * FROM depots ORDER BY name ASC")
     if request.method == "POST":
-        if not depots_list:
-            flash("Add a depot before entering electricity prices.", "error")
+        if not depots_rows:
+            flash("Add at least one depot with solar data before fetching forecasts.", "error")
             return redirect(url_for("depots"))
         try:
-            start_at = parse_datetime_local(request.form["start_at"])
-            end_at = parse_datetime_local(request.form["end_at"])
-        except ValueError:
-            flash("Use valid price window dates.", "error")
-            return redirect(url_for("prices"))
-
-        depot_id = int(request.form["depot_id"])
-        price_per_kwh = float(request.form["price_per_kwh"])
-        if price_per_kwh <= 0:
-            flash("Price per kWh must be positive.", "error")
-        elif end_at <= start_at:
-            flash("Price window end must be after start.", "error")
-        else:
-            execute(
-                """
-                INSERT INTO price_windows (depot_id, start_at, end_at, price_per_kwh, created_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    depot_id,
-                    start_at.isoformat(timespec="minutes"),
-                    end_at.isoformat(timespec="minutes"),
-                    price_per_kwh,
-                    utc_now_iso(),
-                ),
+            windows = build_energy_forecast(
+                depots_as_profiles(depots_rows),
+                horizon_start=datetime.now().replace(second=0, microsecond=0),
+                horizon_days=7,
             )
-            flash("Price window added.", "success")
-            return redirect(url_for("prices"))
+        except ForecastError as exc:
+            flash(f"Automatic forecast failed: {exc}.", "error")
+            return redirect(url_for("energy"))
 
-    price_list = query_all(
+        persist_energy_forecast(windows)
+        flash("Solar and market-based energy forecast refreshed.", "success")
+        return redirect(url_for("energy"))
+
+    forecast_rows, latest_forecast = load_latest_energy_forecast()
+    summary = query_one(
         """
-        SELECT price_windows.*, depots.name AS depot_name
-        FROM price_windows
-        JOIN depots ON depots.id = price_windows.depot_id
-        ORDER BY price_windows.start_at ASC
-        """
+        SELECT
+            ROUND(COALESCE(SUM(solar_kwh_available), 0), 1) AS solar_total,
+            ROUND(COALESCE(AVG(buy_price_per_kwh), 0), 3) AS avg_buy_price
+        FROM energy_forecasts
+        WHERE generated_at = ?
+        """,
+        (latest_forecast["generated_at"],),
+    ) if latest_forecast else None
+    return render_template(
+        "energy.html",
+        depots=depots_rows,
+        forecast_rows=forecast_rows,
+        latest_forecast=latest_forecast,
+        summary=summary,
     )
-    return render_template("prices.html", prices=price_list, depots=depots_list)
+
+
+@app.route("/prices")
+def prices_redirect():
+    return redirect(url_for("energy"))
 
 
 @app.post("/plan/run")
 def run_plan():
     horizon_days = int(request.form.get("horizon_days", 7))
+    depots_rows = query_all("SELECT * FROM depots ORDER BY name ASC")
     vehicles_rows = query_all("SELECT * FROM vehicles ORDER BY name ASC")
     routes_rows = query_all("SELECT * FROM routes ORDER BY departure_at ASC")
+    chargers_rows = query_all("SELECT * FROM chargers ORDER BY name ASC")
 
+    if not depots_rows:
+        flash("Add at least one depot with solar settings before running the planner.", "error")
+        return redirect(url_for("depots"))
     if not vehicles_rows:
         flash("Add at least one vehicle before running the planner.", "error")
         return redirect(url_for("vehicles"))
@@ -496,10 +646,18 @@ def run_plan():
         flash("Add at least one route before running the planner.", "error")
         return redirect(url_for("routes"))
 
-    chargers_rows = query_all("SELECT * FROM chargers ORDER BY name ASC")
-    prices_rows = query_all("SELECT * FROM price_windows ORDER BY start_at ASC")
-
     horizon_start = datetime.now().replace(second=0, microsecond=0)
+    try:
+        energy_windows = build_energy_forecast(
+            depots_as_profiles(depots_rows),
+            horizon_start=horizon_start,
+            horizon_days=horizon_days,
+        )
+    except ForecastError as exc:
+        flash(f"Could not build energy forecast: {exc}.", "error")
+        return redirect(url_for("energy"))
+
+    persist_energy_forecast(energy_windows)
     vehicles = [
         Vehicle(
             id=row["id"],
@@ -537,22 +695,12 @@ def run_plan():
         )
         for row in routes_rows
     ]
-    price_windows = [
-        PriceWindow(
-            id=row["id"],
-            depot_id=row["depot_id"],
-            start_at=datetime.fromisoformat(row["start_at"]),
-            end_at=datetime.fromisoformat(row["end_at"]),
-            price_per_kwh=row["price_per_kwh"],
-        )
-        for row in prices_rows
-    ]
 
     result = run_weekly_plan(
         vehicles=vehicles,
         chargers=chargers,
         routes=routes_to_plan,
-        price_windows=price_windows,
+        energy_windows=energy_windows,
         horizon_start=horizon_start,
         horizon_days=horizon_days,
     )
@@ -609,8 +757,8 @@ def run_plan():
             """
             INSERT INTO charge_plans (
                 plan_run_id, vehicle_id, charger_id, start_at, end_at,
-                target_soc_pct, energy_kwh, expected_cost
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                target_soc_pct, energy_kwh, solar_kwh, grid_kwh, expected_cost
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 plan_run_id,
@@ -620,6 +768,8 @@ def run_plan():
                 session.end_at.isoformat(timespec="minutes"),
                 session.target_soc_pct,
                 session.energy_kwh,
+                session.solar_kwh,
+                session.grid_kwh,
                 session.expected_cost,
             ),
         )
@@ -630,7 +780,7 @@ def run_plan():
             (plan_run_id, item.route_id, item.reason),
         )
 
-    flash("Weekly plan generated.", "success")
+    flash("Weekly plan generated with solar and market-based energy forecast.", "success")
     return redirect(url_for("plan_detail", plan_id=plan_run_id))
 
 
@@ -700,6 +850,8 @@ def plan_detail(plan_id: int):
     if plan_run is None:
         flash("Plan not found.", "error")
         return redirect(url_for("home"))
+    total_solar_kwh = round(sum(row["solar_kwh"] for row in charge_plans), 1) if charge_plans else 0.0
+    total_grid_kwh = round(sum(row["grid_kwh"] for row in charge_plans), 1) if charge_plans else 0.0
     return render_template(
         "plan.html",
         plan_run=plan_run,
@@ -707,6 +859,8 @@ def plan_detail(plan_id: int):
         charge_plans=charge_plans,
         unserved=unserved,
         coverage=coverage_ratio(plan_run),
+        total_solar_kwh=total_solar_kwh,
+        total_grid_kwh=total_grid_kwh,
     )
 
 
