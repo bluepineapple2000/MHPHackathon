@@ -90,7 +90,7 @@
                     </thead>
                     <tbody>
                         {% for route in routes %}
-                            <tr>
+                            <tr class="map-linked-row" data-route-id="{{ route.id }}">
                                 <td>{{ route.name }}</td>
                                 <td>{{ route.service_label }}</td>
                                 <td>{{ route.departure_at|datetime_display }}</td>

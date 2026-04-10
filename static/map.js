@@ -55,11 +55,56 @@
         );
     }
 
+    function colorForRoute(routeId) {
+        const palette = ["#244f41", "#ef8f35", "#2d7f5e", "#8868b2", "#cc5b45", "#3f7eb8", "#9f6d2a", "#4d7d9a"];
+        const index = Math.abs(Number(routeId || 0)) % palette.length;
+        return palette[index];
+    }
+
+    function attachRouteHoverInteractions(routeLayers) {
+        const rows = document.querySelectorAll(".map-linked-row[data-route-id]");
+        const activeClass = "is-active";
+
+        function setActive(routeId, isActive) {
+            const layer = routeLayers[String(routeId)];
+            if (!layer) {
+                return;
+            }
+            const baseStyle = layer.baseStyle || {};
+            layer.setStyle({
+                color: baseStyle.color,
+                weight: isActive ? (baseStyle.weight || 4) + 3 : baseStyle.weight,
+                opacity: isActive ? 1 : baseStyle.opacity,
+                dashArray: baseStyle.dashArray,
+            });
+            if (isActive) {
+                layer.bringToFront();
+            }
+            rows.forEach((row) => {
+                if (row.dataset.routeId === String(routeId)) {
+                    row.classList.toggle(activeClass, isActive);
+                }
+            });
+        }
+
+        Object.entries(routeLayers).forEach(([routeId, layer]) => {
+            layer.on("mouseover", () => setActive(routeId, true));
+            layer.on("mouseout", () => setActive(routeId, false));
+        });
+
+        rows.forEach((row) => {
+            const routeId = row.dataset.routeId;
+            row.addEventListener("mouseenter", () => setActive(routeId, true));
+            row.addEventListener("mouseleave", () => setActive(routeId, false));
+        });
+    }
+
     function renderRouteFormMap(element) {
         const map = createMap(element);
         const depots = JSON.parse(element.dataset.depots || "[]");
         const routes = JSON.parse(element.dataset.routes || "[]");
         const layers = [];
+        const routeLayers = {};
         const depotsById = {};
 
         depots.forEach((depot) => {
@@ -76,14 +121,21 @@
         });
 
         routes.forEach((route) => {
-            layers.push(
-                polylineForRoute(route, {
-                    color: "#7c8f87",
-                    weight: 4,
-                    opacity: 0.55,
-                    dashArray: "6 6",
-                })
-            );
+            const routeColor = colorForRoute(route.id);
+            const layer = polylineForRoute(route, {
+                color: routeColor,
+                weight: 4,
+                opacity: 0.78,
+                dashArray: "6 6",
+            });
+            layer.baseStyle = {
+                color: routeColor,
+                weight: 4,
+                opacity: 0.78,
+                dashArray: "6 6",
+            };
+            routeLayers[String(route.id)] = layer;
+            layers.push(layer);
         });
 
         layers.forEach((layer) => layer.addTo(map));
@@ -171,6 +223,7 @@
         serviceAddressInput.addEventListener("blur", updatePreviewFromAddress);
 
         fitMapToLayers(map, layers);
+        attachRouteHoverInteractions(routeLayers);
     }
 
     function renderPlanOverviewMap(element) {
@@ -179,9 +232,7 @@
         const chargers = JSON.parse(element.dataset.chargers || "[]");
         const routes = JSON.parse(element.dataset.routes || "[]");
         const layers = [];
-        const routePalette = ["#244f41", "#ef8f35", "#2d7f5e", "#8868b2", "#cc5b45", "#3f7eb8"];
-        const vehicleColors = {};
-        let colorIndex = 0;
+        const routeLayers = {};
 
         depots.forEach((depot) => {
             layers.push(
@@ -217,24 +268,26 @@
         });
 
         routes.forEach((route) => {
-            const vehicleName = route.assigned_vehicle || "unserved";
-            if (!vehicleColors[vehicleName]) {
-                vehicleColors[vehicleName] = route.status === "unserved"
-                    ? "#9c3d2f"
-                    : routePalette[colorIndex++ % routePalette.length];
-            }
-            layers.push(
-                polylineForRoute(route, {
-                    color: vehicleColors[vehicleName],
-                    weight: route.status === "unserved" ? 4 : 5,
-                    opacity: route.status === "unserved" ? 0.7 : 0.95,
-                    dashArray: route.status === "unserved" ? "10 8" : undefined,
-                })
-            );
+            const routeColor = route.status === "unserved" ? "#9c3d2f" : colorForRoute(route.id);
+            const layer = polylineForRoute(route, {
+                color: routeColor,
+                weight: route.status === "unserved" ? 4 : 5,
+                opacity: route.status === "unserved" ? 0.78 : 0.92,
+                dashArray: route.status === "unserved" ? "10 8" : undefined,
+            });
+            layer.baseStyle = {
+                color: routeColor,
+                weight: route.status === "unserved" ? 4 : 5,
+                opacity: route.status === "unserved" ? 0.78 : 0.92,
+                dashArray: route.status === "unserved" ? "10 8" : undefined,
+            };
+            routeLayers[String(route.id)] = layer;
+            layers.push(layer);
         });
 
         layers.forEach((layer) => layer.addTo(map));
         fitMapToLayers(map, layers);
+        attachRouteHoverInteractions(routeLayers);
     }
 
     document.querySelectorAll("[data-map-type]").forEach((element) => {

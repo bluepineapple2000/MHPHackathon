@@ -312,53 +312,77 @@ def persist_energy_forecast(windows: list[EnergyWindow]) -> None:
 def insert_demo_dataset() -> tuple[bool, str]:
     existing_demo = query_one(
         "SELECT id FROM depots WHERE name = ?",
-        ("Demo Central Depot",),
+        ("Demo Muenster East Depot",),
     )
     if existing_demo is not None:
         return False, "Demo dataset already exists."
 
     created_at = utc_now_iso()
-    depot_id = execute(
-        """
-        INSERT INTO depots (
-            name, location, latitude, longitude, solar_capacity_kwp, panel_tilt_deg,
-            panel_azimuth_deg, solar_efficiency_factor, grid_fee_per_kwh,
-            supplier_markup_pct, tax_multiplier, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+    depots = {}
+    for depot in (
         (
-            "Demo Central Depot",
-            "Stuttgart",
-            48.7758,
-            9.1829,
-            320.0,
-            DEFAULT_PANEL_TILT,
-            DEFAULT_PANEL_AZIMUTH,
-            DEFAULT_SOLAR_EFFICIENCY,
-            DEFAULT_GRID_FEE,
-            DEFAULT_SUPPLIER_MARKUP_PCT,
-            DEFAULT_TAX_MULTIPLIER,
-            created_at,
+            "Demo Muenster East Depot",
+            "Albersloher Weg 80, 48155 Münster, Germany",
+            25.0,
+            0.19,
         ),
-    )
+        (
+            "Demo Muenster North Depot",
+            "Steinfurter Straße 113, 48149 Münster, Germany",
+            18.0,
+            0.18,
+        ),
+    ):
+        geocoded_depot = geocode_address(depot[1])
+        depot_id = execute(
+            """
+            INSERT INTO depots (
+                name, location, latitude, longitude, solar_capacity_kwp, panel_tilt_deg,
+                panel_azimuth_deg, solar_efficiency_factor, grid_fee_per_kwh,
+                supplier_markup_pct, tax_multiplier, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                depot[0],
+                depot[1],
+                geocoded_depot["latitude"],
+                geocoded_depot["longitude"],
+                depot[2],
+                DEFAULT_PANEL_TILT,
+                DEFAULT_PANEL_AZIMUTH,
+                DEFAULT_SOLAR_EFFICIENCY,
+                depot[3],
+                DEFAULT_SUPPLIER_MARKUP_PCT,
+                DEFAULT_TAX_MULTIPLIER,
+                created_at,
+            ),
+        )
+        depots[depot[0]] = {
+            "id": depot_id,
+            "latitude": geocoded_depot["latitude"],
+            "longitude": geocoded_depot["longitude"],
+        }
 
     for charger in (
-        ("Depot Fast Charging Hub", 120.0, 2),
-        ("Solar Carport Chargers", 60.0, 4),
+        ("East Fast Charger", "Demo Muenster East Depot", 120.0, 1),
+        ("East Solar Canopy", "Demo Muenster East Depot", 50.0, 2),
+        ("North Fast Charger", "Demo Muenster North Depot", 90.0, 1),
+        ("North Yard Charger", "Demo Muenster North Depot", 40.0, 2),
     ):
         execute(
             """
             INSERT INTO chargers (name, depot_id, power_kw, slot_count, created_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (charger[0], depot_id, charger[1], charger[2], created_at),
+            (charger[0], depots[charger[1]]["id"], charger[2], charger[3], created_at),
         )
 
     vehicles = (
-        ("Demo Bus 01", "Electric bus", 420.0, 78.0, 20.0, 1.25, 90.0, 120.0),
-        ("Demo Bus 02", "Electric bus", 420.0, 62.0, 20.0, 1.22, 90.0, 120.0),
-        ("Demo Shuttle 01", "Electric shuttle", 180.0, 68.0, 18.0, 0.82, 100.0, 60.0),
-        ("Demo Care Van 01", "Electric van", 95.0, 72.0, 15.0, 0.34, 130.0, 50.0),
+        ("East Bus 01", "Electric bus", "Demo Muenster East Depot", 240.0, 16.0, 20.0, 1.28, 85.0, 120.0),
+        ("East Bus 02", "Electric bus", "Demo Muenster East Depot", 240.0, 14.0, 20.0, 1.30, 85.0, 120.0),
+        ("East Van 01", "Electric van", "Demo Muenster East Depot", 75.0, 20.0, 15.0, 0.38, 120.0, 50.0),
+        ("North Bus 01", "Electric bus", "Demo Muenster North Depot", 220.0, 18.0, 20.0, 1.22, 85.0, 90.0),
+        ("North Shuttle 01", "Electric shuttle", "Demo Muenster North Depot", 110.0, 19.0, 18.0, 0.84, 95.0, 50.0),
     )
     for vehicle in vehicles:
         execute(
@@ -369,26 +393,33 @@ def insert_demo_dataset() -> tuple[bool, str]:
                 max_charge_power_kw, created_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (*vehicle[:2], depot_id, *vehicle[2:], created_at),
+            (
+                vehicle[0],
+                vehicle[1],
+                depots[vehicle[2]]["id"],
+                *vehicle[3:],
+                created_at,
+            ),
         )
 
     tomorrow = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
     route_templates = (
-        ("Commuter Loop AM", 6, 15, "Mercedesstrasse 37, 70372 Stuttgart, Germany"),
-        ("Commuter Loop PM", 16, 45, "Industriestrasse 4, 70565 Stuttgart, Germany"),
-        ("Hospital Shuttle", 9, 30, "Kriegsbergstrasse 60, 70174 Stuttgart, Germany"),
-        ("Home Care Visits", 12, 15, "Bebelstrasse 48, 70193 Stuttgart, Germany"),
+        ("Early Station Connector", 5, 20, "Demo Muenster East Depot", "Demo Muenster North Depot", "Berliner Platz 29, 48143 Münster, Germany"),
+        ("North Clinic Shuttle", 9, 10, "Demo Muenster North Depot", "Demo Muenster North Depot", "Albert-Schweitzer-Campus 1, 48149 Münster, Germany"),
+        ("East Logistics Run", 12, 35, "Demo Muenster East Depot", "Demo Muenster East Depot", "Wolbecker Straße 300, 48155 Münster, Germany"),
+        ("South Stadium Shuttle", 16, 45, "Demo Muenster North Depot", "Demo Muenster East Depot", "Hammer Straße 302, 48153 Münster, Germany"),
+        ("Late Hiltrup Return", 21, 10, "Demo Muenster East Depot", "Demo Muenster East Depot", "Marktallee 73, 48165 Münster, Germany"),
     )
-    for day_offset in range(3):
+    for day_offset in range(2):
         service_day = tomorrow + timedelta(days=day_offset)
-        for name, dep_hour, dep_minute, service_address in route_templates:
+        for name, dep_hour, dep_minute, start_depot_name, end_depot_name, service_address in route_templates:
             departure_at = service_day.replace(hour=dep_hour, minute=dep_minute)
             geocoded_service = geocode_address(service_address)
             route_data = route_through_waypoints(
                 [
-                    (48.7758, 9.1829),
+                    (depots[start_depot_name]["latitude"], depots[start_depot_name]["longitude"]),
                     (geocoded_service["latitude"], geocoded_service["longitude"]),
-                    (48.7758, 9.1829),
+                    (depots[end_depot_name]["latitude"], depots[end_depot_name]["longitude"]),
                 ]
             )
             arrival_at = departure_at + timedelta(minutes=route_data["duration_minutes"])
@@ -409,8 +440,8 @@ def insert_demo_dataset() -> tuple[bool, str]:
                     arrival_at.isoformat(timespec="minutes"),
                     distance_km,
                     required_speed_kph,
-                    depot_id,
-                    depot_id,
+                    depots[start_depot_name]["id"],
+                    depots[end_depot_name]["id"],
                     service_address,
                     geocoded_service["label"],
                     geocoded_service["latitude"],
@@ -538,7 +569,7 @@ def home():
         upcoming_routes=upcoming_routes,
         latest_forecast=latest_forecast,
         solar_preview_kwh=solar_preview_kwh,
-        has_demo_data=query_one("SELECT id FROM depots WHERE name = ?", ("Demo Central Depot",)) is not None,
+        has_demo_data=query_one("SELECT id FROM depots WHERE name = ?", ("Demo Muenster East Depot",)) is not None,
     )
 
 

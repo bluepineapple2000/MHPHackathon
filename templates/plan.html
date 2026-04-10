@@ -89,7 +89,7 @@
                 </thead>
                 <tbody>
                     {% for assignment in assignments %}
-                        <tr>
+                        <tr class="map-linked-row" data-route-id="{{ assignment.route_id }}">
                             <td>{{ assignment.route_name }}</td>
                             <td>{{ assignment.vehicle_name }}</td>
                             <td>{{ assignment.departure_at|datetime_display }}</td>
@@ -152,7 +152,7 @@
         {% if unserved %}
             <div class="timeline-list">
                 {% for item in unserved %}
-                    <div class="timeline-row warning">
+                    <div class="timeline-row warning map-linked-row" data-route-id="{{ item.route_id }}">
                         <div>
                             <strong>{{ item.route_name }}</strong>
                             <p>{{ item.reason }}</p>
