@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}GridPilot Dashboard{% endblock %}
+{% block title %}Dashboard{% endblock %}
 
 {% block content %}
 <section class="hero-panel">
     <div class="hero-copy">
         <p class="eyebrow">Weekly planning prototype</p>
         <h2>Balance route coverage, solar generation, and lowest-cost grid charging across a fixed EV fleet.</h2>
-        <p class="hero-text">Enter your vehicles, depots, charger setup, and route schedule. GridPilot fetches weather to estimate solar generation, blends that with market price data, and builds a 7-day plan that uses solar first and the cheapest grid windows second.</p>
+        <p class="hero-text">Enter your vehicles, depots, charger setup, and route schedule. The system fetches weather to estimate solar generation, blends that with market price data, and builds a 7-day plan that uses solar first and the cheapest grid windows second.</p>
         <form action="{{ url_for('run_plan') }}" method="post" class="inline-form">
             <input type="hidden" name="horizon_days" value="7">
             <button type="submit" class="primary-button">Generate 7-Day Plan</button>

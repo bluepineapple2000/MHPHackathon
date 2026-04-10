@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}GridPilot{% endblock %}</title>
+    <title>{% block title %}Fleet Planning{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -15,10 +15,9 @@
         <header class="site-header">
             <div class="brand-block">
                 <a href="{{ url_for('home') }}" class="brand-mark">
-                    <span class="brand-kicker">Hackathon MVP</span>
-                    <h1>GridPilot</h1>
+                    <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" class="brand-logo">
                 </a>
-                <p class="brand-copy">Plan electric fleets, forecast depot solar output from weather, and charge at the lowest effective energy cost.</p>
+                <p class="brand-copy" style="display: none;">Precision EV fleet planning.</p>
             </div>
             <nav class="site-nav">
                 <a href="{{ url_for('home') }}" class="nav-link {% if request.endpoint == 'home' %}active{% endif %}">Dashboard</a>
@@ -46,7 +45,7 @@
 
         <footer class="site-footer">
             <div>
-                <p>GridPilot prototype for weekly EV fleet planning.</p>
+                <p>Precision EV fleet planning.</p>
                 <p class="muted-line">Solar-aware charging with weather and market-driven energy forecasting.</p>
             </div>
             <a href="{{ url_for('impressum') }}" class="footer-link">Impressum</a>
